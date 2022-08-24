@@ -141,35 +141,39 @@ class Z80 {
     tStates = 0;
   }
 
+  void nonMaskableInterrupt() {
+    // Per "The Undocumented Z80 Documented", shen a NMI is accepted, IFF1 is
+    // reset. At the end of the routine, IFF1 must be restored (so the running
+    // program is not affected). That’s why IFF2 is there; to keep a copy of
+    // IFF1.
+    iff1 = false;
+    r = (r + 1) % 0x100;
+    pc = 0x0066;
+  }
+
   /// Generate an interrupt.
-  void interrupt([bool nonMaskable = false]) {
-    if (nonMaskable) {
-      // Per "The Undocumented Z80 Documented", shen a NMI is accepted, IFF1 is
-      // reset. At the end of the routine, IFF1 must be restored (so the running
-      // program is not affected). That’s why IFF2 is there; to keep a copy of
-      // IFF1.
-      iff1 = false; // prevent
-      pc = 0x0066;
-    } else {
+  void maskableInterrupt() {
+    if (iff1) {
+      r = (r + 1) % 0x100;
+      iff1 = false;
+      iff2 = false;
       print('maskable interrupt: $iff1 $iff2 $im');
-      if (iff1) {
-        iff1 = false;
-        iff2 = false;
-        // Interrupts enabled
-        switch (im) {
-          case 0:
-            // Not used on the ZX Spectrum
-            break;
-          case 1:
-            PUSH(pc);
-            pc = 0x0038;
-            break;
-          case 2:
-            PUSH(pc);
-            final address = createWord(0, i);
-            pc = _memory.readWord(address);
-            break;
-        }
+      switch (im) {
+        case 0:
+          // Not used on the ZX Spectrum
+          tStates += 13;
+          break;
+        case 1:
+          PUSH(pc);
+          pc = 0x0038;
+          tStates += 13;
+          break;
+        case 2:
+          PUSH(pc);
+          final address = createWord(0, i);
+          pc = _memory.readWord(address);
+          tStates += 19;
+          break;
       }
     }
   }
@@ -1052,7 +1056,6 @@ class Z80 {
 
   /// Shift Left Logical
   int SLL(int reg) {
-    // technically, SLL is undocumented
     fC = isBitSet(reg, 7);
     reg = (reg << 1) % 0x100;
     reg = setBit(reg, 0);
