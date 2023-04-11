@@ -1,4 +1,4 @@
-import 'package:dart_z80/dart_z80.dart';
+import '../dart_z80.dart';
 
 /// Represents a single Z80 assembly instruction
 class Instruction {
@@ -1447,7 +1447,7 @@ class Disassembler {
     final disassembly = decodeInstruction(
         instruction[0], instruction[1], instruction[2], instruction[3]);
 
-    var byteCode = <String>[];
+    final byteCode = <String>[];
     for (var i = 0; i < 4; i++) {
       if (i < length) {
         byteCode.add(toHex8(instruction[i]));

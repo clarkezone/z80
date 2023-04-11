@@ -5,7 +5,7 @@ import 'package:dart_z80/dart_z80.dart';
 // Runs the ZEXDOC and ZEXALL test suites.
 
 const cpuSpeed = 3500000; // Zilog Z80A used in ZX Spectrum clocked at 3.5MHz
-const cyclesPerStep = (cpuSpeed ~/ 50);
+const cyclesPerStep = cpuSpeed ~/ 50;
 const maxStringLength = 100;
 
 // The test suite uses two CP/M BDOS calls, which we emulate here. Per

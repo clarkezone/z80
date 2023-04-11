@@ -7,7 +7,7 @@ import 'loadtests.dart';
 const bool includeUndocumentedOpcodeUnitTests = true;
 const bool skipUndocumentedOpcodeUnitTests = false;
 
-void main() {
+void main() async {
   final tests = loadTests();
 
   if (!includeUndocumentedOpcodeUnitTests) {
@@ -191,6 +191,7 @@ void main() {
     sink.write('}\n');
     print('Generated ${file.uri}.');
   } finally {
-    sink.close();
+    await sink.flush();
+    await sink.close();
   }
 }

@@ -1,5 +1,5 @@
-import 'package:test/test.dart';
 import 'package:dart_z80/dart_z80.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('Single byte instruction', () {
