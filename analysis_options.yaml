@@ -10,6 +10,7 @@ linter:
   rules:
     # Some additional lints we want to enforce
     always_declare_return_types: true
+    avoid_positional_boolean_parameters: true
     avoid_type_to_string: true
     comment_references: true
     discarded_futures: true
@@ -28,6 +29,7 @@ linter:
     sort_child_properties_last: true
     sort_unnamed_constructors_first: true
     test_types_in_equals: true
+    type_literal_in_constant_pattern: true
     unawaited_futures: true
     unnecessary_breaks: true
     unnecessary_lambdas: true
