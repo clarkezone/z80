@@ -344,14 +344,16 @@ public struct Z80 {
 
     /// Add (8-bit)
     mutating func ADD8(_ x: UInt8, _ y: UInt8, withCarry: Bool = false) -> UInt8 {
-        let carry = withCarry ? 1 : 0
-        flags.set(.h, basedOn: (((x & 0x0F) + (y & 0x0F) + carry) & 0x10) == 0x10)
+        let carry = UInt8(withCarry ? 1 : 0)
+        let lowNibbleSum = x.lowNibble + y.lowNibble + carry
+        let halfCarry = (lowNibbleSum & 0x10) == 0x10
+        flags.set(.h, basedOn: halfCarry)
 
         // overflow in add only occurs when operand polarities are the same
         let overflowCheck = x.isSignedBitSet() == y.isSignedBitSet()
 
-        flags.set(.c, basedOn: Int(x) + Int(y) + carry > 0xFF)
-        let result: UInt8 = (x &+ y &+ UInt8(carry))
+        flags.set(.c, basedOn: Int(x) + Int(y) + Int(carry) > 0xFF)
+        let result: UInt8 = (x &+ y &+ carry)
         flags.set(.s, basedOn: result.isSignedBitSet())
 
         // if polarity is now different then add caused an overflow
@@ -464,7 +466,7 @@ public struct Z80 {
     mutating func DAA() {
         // algorithm from http://worldofspectrum.org/faq/reference/z80reference.htm
         var correctionFactor : UInt8 = 0
-        let oldA = a
+        let originalA = a
 
         if (a > 0x99) || flags.contains(.c) {
             correctionFactor |= 0x60
@@ -483,7 +485,7 @@ public struct Z80 {
             a &-= correctionFactor
         }
 
-        flags.set(.h, basedOn: ((oldA & 0x10) ^ (a & 0x10)) == 0x10)
+        flags.set(.h, basedOn: ((originalA & 0x10) ^ (a & 0x10)) == 0x10)
         flags.set(.f5, basedOn: a.isBitSet(5) )
         flags.set(.f3, basedOn: a.isBitSet(3) )
 
@@ -537,15 +539,15 @@ public struct Z80 {
         case 0x03:
             bc = (bc &+ 1)
             tStates += 6
-        //
-        //        // INC B
-        //        case 0x04:
-        //          b = INC(b);
-        //
-        //        // DEC B
-        //        case 0x05:
-        //          b = DEC(b);
-        //
+        
+                // INC B
+                case 0x04:
+                  b = INC(b);
+        
+                // DEC B
+                case 0x05:
+                  b = DEC(b);
+        
         // LD B, *
         case 0x06:
             b = getNextByte()
@@ -559,10 +561,10 @@ public struct Z80 {
         //        case 0x08:
         //          EX_AFAFPrime();
         //
-        //        // ADD HL, BC
-        //        case 0x09:
-        //          hl = ADD16(hl, bc);
-        //
+                // ADD HL, BC
+                case 0x09:
+                  hl = ADD16(hl, bc);
+        
         // LD A, (BC)
         case 0x0A:
             a = memory.readByte(bc)
@@ -572,15 +574,15 @@ public struct Z80 {
         case 0x0B:
             bc &-= 1
             tStates += 6
-        //
-        //        // INC C
-        //        case 0x0C:
-        //          c = INC(c);
-        //
-        //        // DEC C
-        //        case 0x0D:
-        //          c = DEC(c);
-        //
+        
+                // INC C
+                case 0x0C:
+                  c = INC(c);
+        
+                // DEC C
+                case 0x0D:
+                  c = DEC(c);
+        
         // LD C, *
         case 0x0E:
             c = getNextByte()
@@ -608,15 +610,15 @@ public struct Z80 {
         case 0x13:
             de &+= 1
             tStates += 6
-        //
-        //        // INC D
-        //        case 0x14:
-        //          d = INC(d);
-        //
-        //        // DEC D
-        //        case 0x15:
-        //          d = DEC(d);
-        //
+        
+                // INC D
+                case 0x14:
+                  d = INC(d);
+        
+                // DEC D
+                case 0x15:
+                  d = DEC(d);
+        
         // LD D, *
         case 0x16:
             d = getNextByte()
@@ -629,11 +631,11 @@ public struct Z80 {
         //        // JR *
         //        case 0x18:
         //          JR(getNextByte());
-        //
-        //        // ADD HL, DE
-        //        case 0x19:
-        //          hl = ADD16(hl, de);
-        //
+        
+                // ADD HL, DE
+                case 0x19:
+                  hl = ADD16(hl, de);
+        
         // LD A, (DE)
         case 0x1A:
             a = memory.readByte(de)
@@ -643,15 +645,15 @@ public struct Z80 {
         case 0x1B:
             de &-= 1
             tStates += 6
-        //
-        //        // INC E
-        //        case 0x1C:
-        //          e = INC(e);
-        //
-        //        // DEC E
-        //        case 0x1D:
-        //          e = DEC(e);
-        //
+        
+                // INC E
+                case 0x1C:
+                  e = INC(e);
+        
+                // DEC E
+                case 0x1D:
+                  e = DEC(e);
+        
         // LD E, *
         case 0x1E:
             e = getNextByte()
@@ -684,24 +686,24 @@ public struct Z80 {
         case 0x23:
             hl &+= 1
             tStates += 6
-            //
-            //        // INC H
-            //        case 0x24:
-            //          h = INC(h);
-            //
-            //        // DEC H
-            //        case 0x25:
-            //          h = DEC(h);
+            
+                    // INC H
+                    case 0x24:
+                      h = INC(h);
+            
+                    // DEC H
+                    case 0x25:
+                      h = DEC(h);
             
         // LD H, *
         case 0x26:
             h = getNextByte()
             tStates += 7
-            //
-            //        // DAA
-            //        case 0x27:
-            //          DAA();
-            //
+            
+                    // DAA
+                    case 0x27:
+                      DAA();
+            
             //        // JR Z, *
             //        case 0x28:
             //          if (fZ) {
@@ -710,10 +712,10 @@ public struct Z80 {
             //            pc = (pc + 1) % 0x10000;
             //            tStates += 7;
             //          }
-            //
-            //        // ADD HL, HL
-            //        case 0x29:
-            //          hl = ADD16(hl, hl);
+            
+                    // ADD HL, HL
+                    case 0x29:
+                      hl = ADD16(hl, hl);
             
         // LD HL, (**)
         case 0x2A:
@@ -724,15 +726,15 @@ public struct Z80 {
         case 0x2B:
             hl &-= 1
             tStates += 6
-        //
-        //        // INC L
-        //        case 0x2C:
-        //          l = INC(l);
-        //
-        //        // DEC L
-        //        case 0x2D:
-        //          l = DEC(l);
-        //
+        
+                // INC L
+                case 0x2C:
+                  l = INC(l);
+        
+                // DEC L
+                case 0x2D:
+                  l = DEC(l);
+        
         // LD L, *
         case 0x2E:
             l = getNextByte()
@@ -765,17 +767,17 @@ public struct Z80 {
         case 0x33:
             sp &+= 1
             tStates += 6
-        //
-        //        // INC (HL)
-        //        case 0x34:
-        //          memory.writeByte(hl, INC(memory.readByte(hl)));
-        //          tStates += 7;
-        //
-        //        // DEC (HL)
-        //        case 0x35:
-        //          memory.writeByte(hl, DEC(memory.readByte(hl)));
-        //          tStates += 7;
-        //
+        
+                // INC (HL)
+                case 0x34:
+                  memory.writeByte(hl, INC(memory.readByte(hl)));
+                  tStates += 7;
+        
+                // DEC (HL)
+                case 0x35:
+                  memory.writeByte(hl, DEC(memory.readByte(hl)));
+                  tStates += 7;
+        
         // LD (HL), *
         case 0x36:
             memory.writeByte(hl, getNextByte())
@@ -794,29 +796,29 @@ public struct Z80 {
             //            pc = (pc + 1) % 0x10000;
             //            tStates += 7;
             //          }
-            //
-            //        // ADD HL, SP
-            //        case 0x39:
-            //          hl = ADD16(hl, sp);
+            
+                    // ADD HL, SP
+                    case 0x39:
+                      hl = ADD16(hl, sp);
             
         // LD A, (**)
         case 0x3A:
             a = memory.readByte(getNextWord())
             tStates += 13
-        //
-        //        // DEC SP
-        //        case 0x3B:
-        //          sp = (sp - 1) % 0x10000;
-        //          tStates += 6;
-        //
-        //        // INC A
-        //        case 0x3C:
-        //          a = INC(a);
-        //
-        //        // DEC A
-        //        case 0x3D:
-        //          a = DEC(a);
-        //
+        
+                // DEC SP
+                case 0x3B:
+            sp &-= 1
+                  tStates += 6;
+        
+                // INC A
+                case 0x3C:
+                  a = INC(a);
+        
+                // DEC A
+                case 0x3D:
+                  a = DEC(a);
+        
         // LD A, *
         case 0x3E:
             a = getNextByte()
@@ -1139,139 +1141,139 @@ public struct Z80 {
         // LD A, A
         case 0x7F:
             tStates += 4
-        //
-        //        // ADD A, B
-        //        case 0x80:
-        //          a = ADD8(a, b);
-        //
-        //        // ADD A, C
-        //        case 0x81:
-        //          a = ADD8(a, c);
-        //
-        //        // ADD A, D
-        //        case 0x82:
-        //          a = ADD8(a, d);
-        //
-        //        // ADD A, E
-        //        case 0x83:
-        //          a = ADD8(a, e);
-        //
-        //        // ADD A, H
-        //        case 0x84:
-        //          a = ADD8(a, h);
-        //
-        //        // ADD A, L
-        //        case 0x85:
-        //          a = ADD8(a, l);
-        //
-        //        // ADD A, (HL)
-        //        case 0x86:
-        //          a = ADD8(a, memory.readByte(hl));
-        //          tStates += 3;
-        //
-        //        // ADD A, A
-        //        case 0x87:
-        //          a = ADD8(a, a);
-        //
-        //        // ADC A, B
-        //        case 0x88:
-        //          a = ADC8(a, b);
-        //
-        //        // ADC A, C
-        //        case 0x89:
-        //          a = ADC8(a, c);
-        //
-        //        // ADC A, D
-        //        case 0x8A:
-        //          a = ADC8(a, d);
-        //
-        //        // ADC A, E
-        //        case 0x8B:
-        //          a = ADC8(a, e);
-        //
-        //        // ADC A, H
-        //        case 0x8C:
-        //          a = ADC8(a, h);
-        //
-        //        // ADC A, L
-        //        case 0x8D:
-        //          a = ADC8(a, l);
-        //
-        //        // ADC A, (HL)
-        //        case 0x8E:
-        //          a = ADC8(a, memory.readByte(hl));
-        //          tStates += 3;
-        //
-        //        // ADC A, A
-        //        case 0x8F:
-        //          a = ADC8(a, a);
-        //
-        //        // SUB B
-        //        case 0x90:
-        //          a = SUB8(a, b);
-        //
-        //        // SUB C
-        //        case 0x91:
-        //          a = SUB8(a, c);
-        //
-        //        // SUB D
-        //        case 0x92:
-        //          a = SUB8(a, d);
-        //
-        //        // SUB E
-        //        case 0x93:
-        //          a = SUB8(a, e);
-        //
-        //        // SUB H
-        //        case 0x94:
-        //          a = SUB8(a, h);
-        //
-        //        // SUB L
-        //        case 0x95:
-        //          a = SUB8(a, l);
-        //
-        //        // SUB (HL)
-        //        case 0x96:
-        //          a = SUB8(a, memory.readByte(hl));
-        //          tStates += 3;
-        //
-        //        // SUB A
-        //        case 0x97:
-        //          a = SUB8(a, a);
-        //
-        //        // SBC A, B
-        //        case 0x98:
-        //          a = SBC8(a, b);
-        //
-        //        // SBC A, C
-        //        case 0x99:
-        //          a = SBC8(a, c);
-        //
-        //        // SBC A, D
-        //        case 0x9A:
-        //          a = SBC8(a, d);
-        //
-        //        // SBC A, E
-        //        case 0x9B:
-        //          a = SBC8(a, e);
-        //
-        //        // SBC A, H
-        //        case 0x9C:
-        //          a = SBC8(a, h);
-        //
-        //        // SBC A, L
-        //        case 0x9D:
-        //          a = SBC8(a, l);
-        //
-        //        // SBC A, (HL)
-        //        case 0x9E:
-        //          a = SBC8(a, memory.readByte(hl));
-        //          tStates += 3;
-        //
-        //        // SBC A, A
-        //        case 0x9F:
-        //          a = SBC8(a, a);
-        //
+        
+                // ADD A, B
+                case 0x80:
+                  a = ADD8(a, b);
+        
+                // ADD A, C
+                case 0x81:
+                  a = ADD8(a, c);
+        
+                // ADD A, D
+                case 0x82:
+                  a = ADD8(a, d);
+        
+                // ADD A, E
+                case 0x83:
+                  a = ADD8(a, e);
+        
+                // ADD A, H
+                case 0x84:
+                  a = ADD8(a, h);
+        
+                // ADD A, L
+                case 0x85:
+                  a = ADD8(a, l);
+        
+                // ADD A, (HL)
+                case 0x86:
+                  a = ADD8(a, memory.readByte(hl));
+                  tStates += 3;
+        
+                // ADD A, A
+                case 0x87:
+                  a = ADD8(a, a);
+        
+                // ADC A, B
+                case 0x88:
+                  a = ADC8(a, b);
+        
+                // ADC A, C
+                case 0x89:
+                  a = ADC8(a, c);
+        
+                // ADC A, D
+                case 0x8A:
+                  a = ADC8(a, d);
+        
+                // ADC A, E
+                case 0x8B:
+                  a = ADC8(a, e);
+        
+                // ADC A, H
+                case 0x8C:
+                  a = ADC8(a, h);
+        
+                // ADC A, L
+                case 0x8D:
+                  a = ADC8(a, l);
+        
+                // ADC A, (HL)
+                case 0x8E:
+                  a = ADC8(a, memory.readByte(hl));
+                  tStates += 3;
+        
+                // ADC A, A
+                case 0x8F:
+                  a = ADC8(a, a);
+        
+                // SUB B
+                case 0x90:
+                  a = SUB8(a, b);
+        
+                // SUB C
+                case 0x91:
+                  a = SUB8(a, c);
+        
+                // SUB D
+                case 0x92:
+                  a = SUB8(a, d);
+        
+                // SUB E
+                case 0x93:
+                  a = SUB8(a, e);
+        
+                // SUB H
+                case 0x94:
+                  a = SUB8(a, h);
+        
+                // SUB L
+                case 0x95:
+                  a = SUB8(a, l);
+        
+                // SUB (HL)
+                case 0x96:
+                  a = SUB8(a, memory.readByte(hl));
+                  tStates += 3;
+        
+                // SUB A
+                case 0x97:
+                  a = SUB8(a, a);
+        
+                // SBC A, B
+                case 0x98:
+                  a = SBC8(a, b);
+        
+                // SBC A, C
+                case 0x99:
+                  a = SBC8(a, c);
+        
+                // SBC A, D
+                case 0x9A:
+                  a = SBC8(a, d);
+        
+                // SBC A, E
+                case 0x9B:
+                  a = SBC8(a, e);
+        
+                // SBC A, H
+                case 0x9C:
+                  a = SBC8(a, h);
+        
+                // SBC A, L
+                case 0x9D:
+                  a = SBC8(a, l);
+        
+                // SBC A, (HL)
+                case 0x9E:
+                  a = SBC8(a, memory.readByte(hl));
+                  tStates += 3;
+        
+                // SBC A, A
+                case 0x9F:
+                  a = SBC8(a, a);
+        
         //        // AND B
         //        case 0xA0:
         //          a = AND(a, b);
@@ -1426,12 +1428,12 @@ public struct Z80 {
         //            pc = (pc + 2) % 0x10000;
         //          }
         //          tStates += 10;
-        //
-        //        // JP **
-        //        case 0xC3:
-        //          pc = getNextWord();
-        //          tStates += 10;
-        //
+        
+                // JP **
+                case 0xC3:
+                  pc = getNextWord();
+                  tStates += 10;
+        
         //        // CALL NZ, **
         //        case 0xC4:
         //          if (!fZ) {
@@ -1445,12 +1447,12 @@ public struct Z80 {
         //        case 0xC5:
         //          PUSH(bc);
         //          tStates += 11;
-        //
-        //        // ADD A, *
-        //        case 0xC6:
-        //          a = ADD8(a, getNextByte());
-        //          tStates += 3;
-        //
+        
+                // ADD A, *
+                case 0xC6:
+                  a = ADD8(a, getNextByte());
+                  tStates += 3;
+        
         //        // RST 00h
         //        case 0xC7:
         //          RST(0x00);
@@ -1477,10 +1479,10 @@ public struct Z80 {
         //            pc = (pc + 2) % 0x10000;
         //          }
         //          tStates += 10;
-        //
-        //        // BITWISE INSTRUCTIONS
-        //        case 0xCB:
-        //          DecodeCBOpcode();
+        
+                // BITWISE INSTRUCTIONS
+                case 0xCB:
+                  return DecodeCBOpcode();
         //
         //        // CALL Z, **
         //        case 0xCC:
@@ -1494,12 +1496,12 @@ public struct Z80 {
         //        // CALL **
         //        case 0xCD:
         //          CALL();
-        //
-        //        // ADC A, *
-        //        case 0xCE:
-        //          a = ADC8(a, getNextByte());
-        //          tStates += 3;
-        //
+        
+                // ADC A, *
+                case 0xCE:
+                  a = ADC8(a, getNextByte());
+                  tStates += 3;
+        
         //        // RST 08h
         //        case 0xCF:
         //          RST(0x08);
@@ -1545,12 +1547,12 @@ public struct Z80 {
         //        case 0xD5:
         //          PUSH(de);
         //          tStates += 11;
-        //
-        //        // SUB *
-        //        case 0xD6:
-        //          a = SUB8(a, getNextByte());
-        //          tStates += 3;
-        //
+        
+                // SUB *
+                case 0xD6:
+                  a = SUB8(a, getNextByte());
+                  tStates += 3;
+        
         //        // RST 10h
         //        case 0xD7:
         //          RST(0x10);
@@ -1573,16 +1575,16 @@ public struct Z80 {
             swap(&h, &h_)
             swap(&l, &l_)
             tStates += 4
-        //
-        //        // JP C, **
-        //        case 0xDA:
-        //          if (fC) {
-        //            pc = getNextWord();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //          }
-        //          tStates += 10;
-        //
+        
+                // JP C, **
+                case 0xDA:
+            if (flags.contains(.c)) {
+                    pc = getNextWord();
+                  } else {
+                    pc &+= 2
+                  }
+                  tStates += 10;
+        
         //        // IN A, (*)
         //        case 0xDB:
         //          INA(getNextByte());
@@ -1596,16 +1598,16 @@ public struct Z80 {
         //            pc = (pc + 2) % 0x10000;
         //            tStates += 10;
         //          }
-        //
-        //        // IX OPERATIONS
-        //        case 0xDD:
-        //          DecodeDDOpcode();
-        //
-        //        // SBC A, *
-        //        case 0xDE:
-        //          a = SBC8(a, getNextByte());
-        //          tStates += 3;
-        //
+        
+                // IX OPERATIONS
+                case 0xDD:
+                  return DecodeDDOpcode();
+        
+                // SBC A, *
+                case 0xDE:
+                  a = SBC8(a, getNextByte());
+                  tStates += 3;
+        
         //        // RST 18h
         //        case 0xDF:
         //          RST(0x18);
@@ -1623,23 +1625,23 @@ public struct Z80 {
         //        case 0xE1:
         //          hl = POP();
         //          tStates += 10;
-        //
-        //        // JP PO, **
-        //        case 0xE2:
-        //          if (!fPV) {
-        //            pc = getNextWord();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //          }
-        //          tStates += 10;
-        //
-        //        // EX (SP), HL
-        //        case 0xE3:
-        //          final temp = hl;
-        //          hl = memory.readWord(sp);
-        //          memory.writeWord(sp, temp);
-        //          tStates += 19;
-        //
+        
+                // JP PO, **
+                case 0xE2:
+            if (!flags.contains(.pv)) {
+                    pc = getNextWord();
+                  } else {
+                    pc &+= 2
+                  }
+                  tStates += 10;
+        
+                // EX (SP), HL
+                case 0xE3:
+                  let temp = hl;
+                  hl = memory.readWord(sp);
+                  memory.writeWord(sp, temp);
+                  tStates += 19;
+        
         //        // CALL PO, **
         //        case 0xE4:
         //          if (!fPV) {
@@ -1653,12 +1655,12 @@ public struct Z80 {
         //        case 0xE5:
         //          PUSH(hl);
         //          tStates += 11;
-        //
-        //        // AND *
-        //        case 0xE6:
-        //          a = AND(a, getNextByte());
-        //          tStates += 3;
-        //
+//
+//                // AND *
+//                case 0xE6:
+//                  a = AND(a, getNextByte());
+//                  tStates += 3;
+//
         //        // RST 20h
         //        case 0xE7:
         //          RST(0x20);
@@ -1703,11 +1705,11 @@ public struct Z80 {
         //            pc = (pc + 2) % 0x10000;
         //            tStates += 10;
         //          }
-        //
-        //        // EXTD INSTRUCTIONS
-        //        case 0xED:
-        //          DecodeEDOpcode();
-        //
+        
+                // EXTD INSTRUCTIONS
+                case 0xED:
+                  return DecodeEDOpcode();
+        
         //        // XOR *
         //        case 0xEE:
         //          a = XOR(a, getNextByte());
@@ -1806,11 +1808,11 @@ public struct Z80 {
             //            pc = (pc + 2) % 0x10000;
             //            tStates += 10;
             //          }
-            //
-            //        // IY INSTRUCTIONS
-            //        case 0xFD:
-            //          DecodeFDOpcode();
-            //
+            
+                    // IY INSTRUCTIONS
+                    case 0xFD:
+                      return DecodeFDOpcode();
+            
             //        // CP *
             //        case 0xFE:
             //          CP(getNextByte());
@@ -1822,8 +1824,15 @@ public struct Z80 {
             //      }
 
         default:
+            // Undocumented or unimplemented instruction
             return false
         }
         return true
     }
+    
+    func DecodeCBOpcode() -> Bool { false }
+    func DecodeDDOpcode() -> Bool { false }
+    func DecodeEDOpcode() -> Bool { false }
+    func DecodeFDOpcode() -> Bool { false }
+
 }

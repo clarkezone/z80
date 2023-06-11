@@ -54,3 +54,11 @@ extension UInt16 {
         (UInt16(highByte) << 8) + UInt16(lowByte)
     }
 }
+
+extension UInt8 {
+    /// Extract the high four bits of a 8-bit value.
+    var highNibble: UInt8 { UInt8((self & 0xF0) >> 4) }
+
+    /// Extract the low four bits of a 8-bit value.
+    var lowNibble: UInt8 { UInt8(self & 0x0F) }
+}

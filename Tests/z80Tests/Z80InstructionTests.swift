@@ -14,15 +14,15 @@ class Z80InstructionTests: XCTestCase
 {
     // we pick this as a 'safe' location that doesn't clash with other
     // instructions
-    let origin: UInt16 = 0xa000
+    let origin: UInt16 = 0xA000
     let haltOpcode: UInt8 = 0x76
 
-    // TODO: Add an init() so we don't have to do this
-    var z80: Z80 = Z80(memory: Memory(sizeInBytes: 65536))
+    var z80: Z80 = Z80()
 
     override func setUp()
     {
-        z80 = Z80(memory: Memory(sizeInBytes: 65536))
+        // reinitialize memory and processor start state
+        z80 = Z80()
     }
 
     func poke(_ address: UInt16, _ value: UInt8) { z80.memory.writeByte(address, value) }
@@ -41,7 +41,8 @@ class Z80InstructionTests: XCTestCase
         z80.pc = origin
         while !(peek(z80.pc) == haltOpcode)
         {
-            _ = z80.executeNextInstruction()
+            let success = z80.executeNextInstruction()
+            if (!success) { return }
         }
         z80.r &+= 1 // Account for HALT instruction
     }
