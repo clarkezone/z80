@@ -14,7 +14,7 @@ abstract class MemoryBase {
   void load(int origin, Iterable<int> data);
 
   /// Read a block of memory, starting at origin.
-  void read(int origin, int length);
+  Uint8List read(int origin, int length);
 
   /// Read a single byte from the given memory location.
   int readByte(int address);
