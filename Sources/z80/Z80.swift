@@ -12,20 +12,8 @@ enum InterruptMode {
     case im0, im1, im2
 }
 
-extension UInt16 {
-    /// Extract the high byte of a 16-bit value.
-    var highByte: UInt8 { UInt8((self & 0xFF00) >> 8) }
-
-    /// Extract the low byte of a 16-bit value.
-    var lowByte: UInt8 { UInt8(self & 0x00FF) }
-
-    static func createWord(_ highByte: UInt8, _ lowByte: UInt8) -> UInt16 {
-        UInt16(highByte) << 8 + UInt16(lowByte)
-    }
-}
-
 public struct Z80 {
-    var memory = Memory<UInt16>(sizeInBytes: 64 * 1024)
+    var memory: Memory<UInt16>
     
     // Core registers
     var a: UInt8 = 0xFF, f: UInt8 = 0xFF
@@ -69,6 +57,14 @@ public struct Z80 {
     
     /// Whether the processor is halted or not
     var halt = false
+    
+    init() {
+        self.memory = Memory(sizeInBytes: 65536)
+    }
+    
+    init(memory: Memory<UInt16>) {
+        self.memory = memory
+    }
     
     var af: UInt16 {
         get { UInt16.createWord(a, f) }
@@ -131,7 +127,7 @@ public struct Z80 {
     }
     
     struct Flags: OptionSet {
-        let rawValue: UInt8
+        var rawValue: UInt8
         
         static let c = Flags(rawValue: 1 << 0) // carry
         static let n = Flags(rawValue: 1 << 1) // add/subtract
@@ -141,6 +137,18 @@ public struct Z80 {
         static let f5 = Flags(rawValue: 1 << 5)
         static let z = Flags(rawValue: 1 << 6) // zero
         static let s = Flags(rawValue: 1 << 7) // sign
+        
+        mutating func set(_ flags: Flags, basedOn condition: Bool) {
+            if condition {
+                self = Flags(rawValue: rawValue | flags.rawValue)
+            } else {
+                self = Flags(rawValue: rawValue & ~(flags.rawValue))
+            }
+        }
+        
+        mutating func setZeroFlag(basedOn value: any BinaryInteger) {
+            set(.z, basedOn: Int(value) == 0)
+        }
     }
     
     var flags: Flags { get { Flags(rawValue: f) } set { f = newValue.rawValue }}
@@ -170,9 +178,14 @@ public struct Z80 {
         tStates = 0
     }
     
-    // Use for debugging, where we want to be able to see what's coming without
-    // affecting PC
+    /// Read-ahead the byte at offset `offset` from the current `pc` register.
+    ///
+    /// This is useful for debugging, where we want to be able to see what's coming without affecting the program counter.
     func previewByte(pcOffset offset: UInt16) -> UInt8 { memory.readByte(pc + offset) }
+    
+    /// Read-ahead the word at offset `offset` from the current `pc` register
+    ///
+    /// This is useful for debugging, where we want to be able to see what's coming without affecting the program counter.
     func previewWord(pcOffset offset: UInt16) -> UInt16 { memory.readWord(pc + offset) }
     
     private mutating func getNextByte() -> UInt8 {
@@ -187,6 +200,300 @@ public struct Z80 {
         return wordRead
     }
     
+    // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+    // FLAG SETS
+    // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+    
+    // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+    // INSTRUCTIONS
+    // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+
+    /// Load and Increment
+    mutating func LDI() {
+        let byteRead = memory.readByte(hl)
+        memory.writeByte(de, byteRead)
+        
+        flags.set(.pv, basedOn: (bc - 1) != 0)
+        
+        de &+= 1
+        hl &+= 1
+        bc &-= 1
+        
+        flags.remove([.h, .n])
+        
+        flags.set(.f5, basedOn: (byteRead + a).isBitSet(1))
+        flags.set(.f3, basedOn: (byteRead + a).isBitSet(3))
+
+        tStates += 16
+    }
+
+    /// Load and Decrement
+    mutating func LDD() {
+        let byteRead = memory.readByte(hl)
+        memory.writeByte(de, byteRead)
+
+        de &-= 1
+        hl &-= 1
+        bc &-= 1
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: bc != 0)
+        flags.set(.f5, basedOn: (byteRead + a).isBitSet(1))
+        flags.set(.f3, basedOn: (byteRead + a).isBitSet(3))
+
+        tStates += 16
+    }
+
+    /// Load, Increment and Repeat
+    mutating func LDIR() {
+        let byteRead = memory.readByte(hl)
+        memory.writeByte(de, byteRead)
+
+        de &+= 1
+        hl &+= 1
+        bc &-= 1
+
+        if bc != 0 {
+            pc &-= 2
+            tStates += 21
+        } else {
+            tStates += 16
+        }
+        flags.set(.f5, basedOn: (byteRead + a).isBitSet(1))
+        flags.set(.f3, basedOn: (byteRead + a).isBitSet(3))
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: bc != 0)
+    }
+
+    /// Load, Decrement and Repeat
+    mutating func LDDR() {
+        let byteRead = memory.readByte(hl)
+        memory.writeByte(de, byteRead)
+
+        de &-= 1
+        hl &-= 1
+        bc &-= 1
+
+        if bc > 0 {
+            pc &-= 2
+            tStates += 21
+        } else {
+            tStates += 16
+        }
+        flags.set(.f5, basedOn: (byteRead + a).isBitSet(1))
+        flags.set(.f3, basedOn: (byteRead + a).isBitSet(3))
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: bc != 0)
+    }
+
+    // Arithmetic operations
+
+    /// Increment
+    mutating func INC(_ originalValue: UInt8) -> UInt8 {
+        flags.set(.pv, basedOn: originalValue == 0x7F)
+        let newValue = originalValue &+ 1
+        flags.set(.h, basedOn: newValue.isBitSet(4) != originalValue.isBitSet(4))
+        flags.setZeroFlag(basedOn: newValue)
+        flags.set(.s, basedOn: newValue.isSignedBitSet())
+        flags.set(.f5, basedOn: newValue.isBitSet(5))
+        flags.set(.f3, basedOn: newValue.isBitSet(3))
+        flags.remove(.n)
+
+        tStates += 4
+
+        return newValue
+    }
+
+    /// Decrement
+    mutating func DEC(_ originalValue: UInt8) -> UInt8 {
+        flags.set(.pv, basedOn: originalValue == 0x80)
+        let newValue = originalValue &- 1
+        flags.set(.h, basedOn: newValue.isBitSet(4) != originalValue.isBitSet(4))
+        flags.setZeroFlag(basedOn: newValue)
+        flags.set(.s, basedOn: newValue.isSignedBitSet())
+        flags.set(.f5, basedOn: newValue.isBitSet(5))
+        flags.set(.f3, basedOn: newValue.isBitSet(3))
+        flags.insert(.n)
+
+        tStates += 4
+
+        return newValue
+    }
+
+    /// Add with Carry (8-bit)
+    mutating func ADC8(_ x: UInt8, _ y: UInt8) -> UInt8 {
+        ADD8(x, y, withCarry: flags.contains(.c))
+    }
+
+    /// Add with Carry (16-bit)
+    mutating func ADC16(_ xx: UInt16, _ yy: UInt16) -> UInt16 {
+        // overflow in add only occurs when operand polarities are the same
+        let overflowCheck = xx.isSignedBitSet() == yy.isSignedBitSet()
+
+        let result = ADD16(xx, yy, withCarry: flags.contains(.c))
+
+        // if polarity is now different then add caused an overflow
+        if overflowCheck {
+            flags.set(.pv, basedOn: result.isSignedBitSet() != yy.isSignedBitSet())
+        } else {
+            flags.remove(.pv)
+        }
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        return result
+    }
+
+    /// Add (8-bit)
+    mutating func ADD8(_ x: UInt8, _ y: UInt8, withCarry: Bool = false) -> UInt8 {
+        let carry = withCarry ? 1 : 0
+        flags.set(.h, basedOn: (((x & 0x0F) + (y & 0x0F) + carry) & 0x10) == 0x10)
+
+        // overflow in add only occurs when operand polarities are the same
+        let overflowCheck = x.isSignedBitSet() == y.isSignedBitSet()
+
+        flags.set(.c, basedOn: Int(x) + Int(y) + carry > 0xFF)
+        let result: UInt8 = (x &+ y &+ UInt8(carry))
+        flags.set(.s, basedOn: result.isSignedBitSet())
+
+        // if polarity is now different then add caused an overflow
+        if overflowCheck {
+            flags.set(.pv, basedOn: flags.contains(.s) != y.isSignedBitSet())
+        } else {
+            flags.remove(.pv)
+        }
+
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+        flags.setZeroFlag(basedOn: result)
+        flags.remove(.n)
+
+        tStates += 4
+
+        return result
+    }
+
+    /// Add (16-bit)
+     mutating func ADD16(_ xx: UInt16, _ yy: UInt16, withCarry: Bool = false) -> UInt16 {
+        let carry = withCarry ? 1 : 0
+
+         flags.set(.h, basedOn: Int(xx & 0x0FFF) + Int(yy & 0x0FFF) + carry > 0x0FFF)
+         flags.set(.c, basedOn: Int(xx) + Int(yy) + carry > 0xFFFF)
+         let result : UInt16 = xx &+ yy &+ UInt16(carry)
+         flags.set(.f5, basedOn: result.isBitSet(13) )
+         flags.set(.f3, basedOn: result.isBitSet(11) )
+         flags.remove(.n)
+
+        tStates += 11
+
+        return result
+    }
+
+    /// Subtract with Carry (8-bit)
+    mutating func SBC8(_ x : UInt8, _ y : UInt8) -> UInt8 {
+        return SUB8(x, y, withCarry: flags.contains(.c))
+    }
+
+    /// Subtract with Carry (16-bit)
+    mutating func SBC16(_ xx : UInt16, _ yy: UInt16) -> UInt16 {
+        let carry = flags.contains(.c) ? 1 : 0
+
+        flags.set(.c, basedOn: Int(xx) < (Int(yy) + carry))
+        flags.set(.h, basedOn: (xx & 0xFFF) < ((yy & 0xFFF) + UInt16(carry)))
+        flags.set(.s, basedOn: xx.isSignedBitSet())
+
+        // overflow in subtract only occurs when operand signs are different
+        let overflowCheck = xx.isSignedBitSet() != yy.isSignedBitSet()
+
+        let result : UInt16 = xx &- yy &- UInt16(carry)
+        flags.set(.f5, basedOn: result.isBitSet(13) )
+        flags.set(.f3, basedOn: result.isBitSet(11) )
+        flags.setZeroFlag(basedOn: result)
+        flags.insert(.n)
+
+        // if x changed polarity then subtract caused an overflow
+        if overflowCheck {
+            flags.set(.pv, basedOn: flags.contains(.s) != result.isSignedBitSet())
+        } else {
+            flags.remove(.pv)
+        }
+        flags.set(.s, basedOn: result.isSignedBitSet())
+
+        tStates += 15
+
+        return result
+    }
+
+    /// Subtract (8-bit)
+    mutating func SUB8(_ x: UInt8, _ y: UInt8, withCarry: Bool = false) -> UInt8 {
+        let carry = withCarry ? 1 : 0
+
+        flags.set(.c, basedOn: Int(x) < (Int(y) + carry))
+        flags.set(.h, basedOn: (x & 0x0F) < ((y & 0x0F) + UInt8(carry)))
+        flags.set(.s, basedOn: x.isSignedBitSet())
+
+        // overflow in subtract only occurs when operand signs are different
+        let overflowCheck = x.isSignedBitSet() != y.isSignedBitSet()
+
+        let result: UInt8 = x &- y &- UInt8(carry)
+        flags.set(.f5, basedOn: result.isBitSet(5) )
+        flags.set(.f3, basedOn: result.isBitSet(3) )
+
+        // if x changed polarity then subtract caused an overflow
+        if overflowCheck {
+            flags.set(.pv, basedOn: flags.contains(.s) != result.isSignedBitSet())
+        } else {
+            flags.remove(.pv)
+        }
+
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.insert(.n)
+        tStates += 4
+
+        return result
+    }
+
+    /// Compare
+    mutating func CP(_ x: UInt8) {
+        _ = SUB8(a, x)
+        
+        flags.set(.f5, basedOn: x.isBitSet(5) )
+        flags.set(.f3, basedOn: x.isBitSet(3) )
+    }
+
+    /// Decimal Adjust Accumulator
+    mutating func DAA() {
+        // algorithm from http://worldofspectrum.org/faq/reference/z80reference.htm
+        var correctionFactor : UInt8 = 0
+        let oldA = a
+
+        if (a > 0x99) || flags.contains(.c) {
+            correctionFactor |= 0x60
+            flags.insert(.c)
+        } else {
+            flags.remove(.c)
+        }
+
+        if ((a & 0x0F) > 0x09) || flags.contains(.h) {
+            correctionFactor |= 0x06
+        }
+
+        if !flags.contains(.n) {
+            a &+= correctionFactor
+        } else {
+            a &-= correctionFactor
+        }
+
+        flags.set(.h, basedOn: ((oldA & 0x10) ^ (a & 0x10)) == 0x10)
+        flags.set(.f5, basedOn: a.isBitSet(5) )
+        flags.set(.f3, basedOn: a.isBitSet(3) )
+
+        flags.set(.s, basedOn: a.isSignedBitSet())
+        flags.setZeroFlag(basedOn: a)
+        flags.set(.pv, basedOn: a.isParity())
+
+        tStates += 4
+    }
+
     //
     //
     //    func AND(a: UInt8, reg: UInt8) -> int {
@@ -417,62 +724,62 @@ public struct Z80 {
         case 0x2B:
             hl &-= 1
             tStates += 6
-            //
-            //        // INC L
-            //        case 0x2C:
-            //          l = INC(l);
-            //
-            //        // DEC L
-            //        case 0x2D:
-            //          l = DEC(l);
-            //
-            //        // LD L, *
-            //        case 0x2E:
-            //          l = getNextByte();
-            //          tStates += 7;
-            //
-            //        // CPL
-            //        case 0x2F:
-            //          CPL();
-            //
-            //        // JR NC, *
-            //        case 0x30:
-            //          if (!fC) {
-            //            JR(getNextByte());
-            //          } else {
-            //            pc = (pc + 1) % 0x10000;
-            //            tStates += 7;
-            //          }
-            //
-            //        // LD SP, **
-            //        case 0x31:
-            //          sp = getNextWord();
-            //          tStates += 10;
-            //
-            //        // LD (**), A
-            //        case 0x32:
-            //          memory.writeByte(getNextWord(), a);
-            //          tStates += 13;
-            //
-            //        // INC SP
-            //        case 0x33:
-            //          sp = (sp + 1) % 0x10000;
-            //          tStates += 6;
-            //
-            //        // INC (HL)
-            //        case 0x34:
-            //          memory.writeByte(hl, INC(memory.readByte(hl)));
-            //          tStates += 7;
-            //
-            //        // DEC (HL)
-            //        case 0x35:
-            //          memory.writeByte(hl, DEC(memory.readByte(hl)));
-            //          tStates += 7;
-            //
-            //        // LD (HL), *
-            //        case 0x36:
-            //          memory.writeByte(hl, getNextByte());
-            //          tStates += 10;
+        //
+        //        // INC L
+        //        case 0x2C:
+        //          l = INC(l);
+        //
+        //        // DEC L
+        //        case 0x2D:
+        //          l = DEC(l);
+        //
+        // LD L, *
+        case 0x2E:
+            l = getNextByte()
+            tStates += 7
+        //
+        //        // CPL
+        //        case 0x2F:
+        //          CPL();
+        //
+        //        // JR NC, *
+        //        case 0x30:
+        //          if (!fC) {
+        //            JR(getNextByte());
+        //          } else {
+        //            pc = (pc + 1) % 0x10000;
+        //            tStates += 7;
+        //          }
+        //
+        // LD SP, **
+        case 0x31:
+            sp = getNextWord()
+            tStates += 10
+        //
+        // LD (**), A
+        case 0x32:
+            memory.writeByte(getNextWord(), a)
+            tStates += 13
+        //
+        // INC SP
+        case 0x33:
+            sp &+= 1
+            tStates += 6
+        //
+        //        // INC (HL)
+        //        case 0x34:
+        //          memory.writeByte(hl, INC(memory.readByte(hl)));
+        //          tStates += 7;
+        //
+        //        // DEC (HL)
+        //        case 0x35:
+        //          memory.writeByte(hl, DEC(memory.readByte(hl)));
+        //          tStates += 7;
+        //
+        // LD (HL), *
+        case 0x36:
+            memory.writeByte(hl, getNextByte())
+            tStates += 10
             //
             //        // SCF
             //        case 0x37:
@@ -491,1015 +798,1006 @@ public struct Z80 {
             //        // ADD HL, SP
             //        case 0x39:
             //          hl = ADD16(hl, sp);
-            //
-            //        // LD A, (**)
-            //        case 0x3A:
-            //          a = memory.readByte(getNextWord());
-            //          tStates += 13;
-            //
-            //        // DEC SP
-            //        case 0x3B:
-            //          sp = (sp - 1) % 0x10000;
-            //          tStates += 6;
-            //
-            //        // INC A
-            //        case 0x3C:
-            //          a = INC(a);
-            //
-            //        // DEC A
-            //        case 0x3D:
-            //          a = DEC(a);
-            //
-            //        // LD A, *
-            //        case 0x3E:
-            //          a = getNextByte();
-            //          tStates += 7;
-            //
-            //        // CCF
-            //        case 0x3F:
-            //          CCF();
-            //
-            //        // LD B, B
-            //        case 0x40:
-            //          tStates += 4;
-            //
-            //        // LD B, C
-            //        case 0x41:
-            //          b = c;
-            //          tStates += 4;
-            //
-            //        // LD B, D
-            //        case 0x42:
-            //          b = d;
-            //          tStates += 4;
-            //
-            //        // LD B, E
-            //        case 0x43:
-            //          b = e;
-            //          tStates += 4;
-            //
-            //        // LD B, H
-            //        case 0x44:
-            //          b = h;
-            //          tStates += 4;
-            //
-            //        // LD B, L
-            //        case 0x45:
-            //          b = l;
-            //          tStates += 4;
-            //
-            //        // LD B, (HL)
-            //        case 0x46:
-            //          b = memory.readByte(hl);
-            //          tStates += 7;
-            //
-            //        // LD B, A
-            //        case 0x47:
-            //          b = a;
-            //          tStates += 4;
-            //
-            //        // LD C, B
-            //        case 0x48:
-            //          c = b;
-            //          tStates += 4;
-            //
-            //        // LD C, C
-            //        case 0x49:
-            //          tStates += 4;
-            //
-            //        // LD C, D
-            //        case 0x4A:
-            //          c = d;
-            //          tStates += 4;
-            //
-            //        // LD C, E
-            //        case 0x4B:
-            //          c = e;
-            //          tStates += 4;
-            //
-            //        // LD C, H
-            //        case 0x4C:
-            //          c = h;
-            //          tStates += 4;
-            //
-            //        // LD C, L
-            //        case 0x4D:
-            //          c = l;
-            //          tStates += 4;
-            //
-            //        // LD C, (HL)
-            //        case 0x4E:
-            //          c = memory.readByte(hl);
-            //          tStates += 7;
-            //
-            //        // LD C, A
-            //        case 0x4F:
-            //          c = a;
-            //          tStates += 4;
-            //
-            //        // LD D, B
-            //        case 0x50:
-            //          d = b;
-            //          tStates += 4;
-            //
-            //        // LD D, C
-            //        case 0x51:
-            //          d = c;
-            //          tStates += 4;
-            //
-            //        // LD D, D
-            //        case 0x52:
-            //          tStates += 4;
-            //
-            //        // LD D, E
-            //        case 0x53:
-            //          d = e;
-            //          tStates += 4;
-            //
-            //        // LD D, H
-            //        case 0x54:
-            //          d = h;
-            //          tStates += 4;
-            //
-            //        // LD D, L
-            //        case 0x55:
-            //          d = l;
-            //          tStates += 4;
-            //
-            //        // LD D, (HL)
-            //        case 0x56:
-            //          d = memory.readByte(hl);
-            //          tStates += 7;
-            //
-            //        // LD D, A
-            //        case 0x57:
-            //          d = a;
-            //          tStates += 4;
-            //
-            //        // LD E, B
-            //        case 0x58:
-            //          e = b;
-            //          tStates += 4;
-            //
-            //        // LD E, C
-            //        case 0x59:
-            //          e = c;
-            //          tStates += 4;
-            //
-            //        // LD E, D
-            //        case 0x5A:
-            //          e = d;
-            //          tStates += 4;
-            //
-            //        // LD E, E
-            //        case 0x5B:
-            //          tStates += 4;
-            //
-            //        // LD E, H
-            //        case 0x5C:
-            //          e = h;
-            //          tStates += 4;
-            //
-            //        // LD E, L
-            //        case 0x5D:
-            //          e = l;
-            //          tStates += 4;
-            //
-            //        // LD E, (HL)
-            //        case 0x5E:
-            //          e = memory.readByte(hl);
-            //          tStates += 7;
-            //
-            //        // LD E, A
-            //        case 0x5F:
-            //          e = a;
-            //          tStates += 4;
-            //
-            //        // LD H, B
-            //        case 0x60:
-            //          h = b;
-            //          tStates += 4;
-            //
-            //        // LD H, C
-            //        case 0x61:
-            //          h = c;
-            //          tStates += 4;
-            //
-            //        // LD H, D
-            //        case 0x62:
-            //          h = d;
-            //          tStates += 4;
-            //
-            //        // LD H, E
-            //        case 0x63:
-            //          h = e;
-            //          tStates += 4;
-            //
-            //        // LD H, H
-            //        case 0x64:
-            //          tStates += 4;
-            //
-            //        // LD H, L
-            //        case 0x65:
-            //          h = l;
-            //          tStates += 4;
-            //
-            //        // LD H, (HL)
-            //        case 0x66:
-            //          h = memory.readByte(hl);
-            //          tStates += 7;
-            //
-            //        // LD H, A
-            //        case 0x67:
-            //          h = a;
-            //          tStates += 4;
-            //
-            //        // LD L, B
-            //        case 0x68:
-            //          l = b;
-            //          tStates += 4;
-            //
-            //        // LD L, C
-            //        case 0x69:
-            //          l = c;
-            //          tStates += 4;
-            //
-            //        // LD L, D
-            //        case 0x6A:
-            //          l = d;
-            //          tStates += 4;
-            //
-            //        // LD L, E
-            //        case 0x6B:
-            //          l = e;
-            //          tStates += 4;
-            //
-            //        // LD L, H
-            //        case 0x6C:
-            //          l = h;
-            //          tStates += 4;
-            //
-            //        // LD L, L
-            //        case 0x6D:
-            //          tStates += 4;
-            //
-            //        // LD L, (HL)
-            //        case 0x6E:
-            //          l = memory.readByte(hl);
-            //          tStates += 7;
-            //
-            //        // LD L, A
-            //        case 0x6F:
-            //          l = a;
-            //          tStates += 4;
-            //
-            //        // LD (HL), B
-            //        case 0x70:
-            //          memory.writeByte(hl, b);
-            //          tStates += 7;
-            //
-            //        // LD (HL), C
-            //        case 0x71:
-            //          memory.writeByte(hl, c);
-            //          tStates += 7;
-            //
-            //        // LD (HL), D
-            //        case 0x72:
-            //          memory.writeByte(hl, d);
-            //          tStates += 7;
-            //
-            //        // LD (HL), E
-            //        case 0x73:
-            //          memory.writeByte(hl, e);
-            //          tStates += 7;
-            //
-            //        // LD (HL), H
-            //        case 0x74:
-            //          memory.writeByte(hl, h);
-            //          tStates += 7;
-            //
-            //        // LD (HL), L
-            //        case 0x75:
-            //          memory.writeByte(hl, l);
-            //          tStates += 7;
-            //
-            //        // HALT
-            //        case 0x76:
-            //          tStates += 4;
-            //          halt = true;
-            //          pc--; // return to HALT, just keep executing it.
-            //
-            //        // LD (HL), A
-            //        case 0x77:
-            //          memory.writeByte(hl, a);
-            //          tStates += 7;
-            //
-            //        // LD A, B
-            //        case 0x78:
-            //          a = b;
-            //          tStates += 4;
-            //
-            //        // LD A, C
-            //        case 0x79:
-            //          a = c;
-            //          tStates += 4;
-            //
-            //        // LD A, D
-            //        case 0x7A:
-            //          a = d;
-            //          tStates += 4;
-            //
-            //        // LD A, E
-            //        case 0x7B:
-            //          a = e;
-            //          tStates += 4;
-            //
-            //        // LD A, H
-            //        case 0x7C:
-            //          a = h;
-            //          tStates += 4;
-            //
-            //        // LD A, L
-            //        case 0x7D:
-            //          a = l;
-            //          tStates += 4;
-            //
-            //        // LD A, (HL)
-            //        case 0x7E:
-            //          a = memory.readByte(hl);
-            //          tStates += 7;
-            //
-            //        // LD A, A
-            //        case 0x7F:
-            //          tStates += 4;
-            //
-            //        // ADD A, B
-            //        case 0x80:
-            //          a = ADD8(a, b);
-            //
-            //        // ADD A, C
-            //        case 0x81:
-            //          a = ADD8(a, c);
-            //
-            //        // ADD A, D
-            //        case 0x82:
-            //          a = ADD8(a, d);
-            //
-            //        // ADD A, E
-            //        case 0x83:
-            //          a = ADD8(a, e);
-            //
-            //        // ADD A, H
-            //        case 0x84:
-            //          a = ADD8(a, h);
-            //
-            //        // ADD A, L
-            //        case 0x85:
-            //          a = ADD8(a, l);
-            //
-            //        // ADD A, (HL)
-            //        case 0x86:
-            //          a = ADD8(a, memory.readByte(hl));
-            //          tStates += 3;
-            //
-            //        // ADD A, A
-            //        case 0x87:
-            //          a = ADD8(a, a);
-            //
-            //        // ADC A, B
-            //        case 0x88:
-            //          a = ADC8(a, b);
-            //
-            //        // ADC A, C
-            //        case 0x89:
-            //          a = ADC8(a, c);
-            //
-            //        // ADC A, D
-            //        case 0x8A:
-            //          a = ADC8(a, d);
-            //
-            //        // ADC A, E
-            //        case 0x8B:
-            //          a = ADC8(a, e);
-            //
-            //        // ADC A, H
-            //        case 0x8C:
-            //          a = ADC8(a, h);
-            //
-            //        // ADC A, L
-            //        case 0x8D:
-            //          a = ADC8(a, l);
-            //
-            //        // ADC A, (HL)
-            //        case 0x8E:
-            //          a = ADC8(a, memory.readByte(hl));
-            //          tStates += 3;
-            //
-            //        // ADC A, A
-            //        case 0x8F:
-            //          a = ADC8(a, a);
-            //
-            //        // SUB B
-            //        case 0x90:
-            //          a = SUB8(a, b);
-            //
-            //        // SUB C
-            //        case 0x91:
-            //          a = SUB8(a, c);
-            //
-            //        // SUB D
-            //        case 0x92:
-            //          a = SUB8(a, d);
-            //
-            //        // SUB E
-            //        case 0x93:
-            //          a = SUB8(a, e);
-            //
-            //        // SUB H
-            //        case 0x94:
-            //          a = SUB8(a, h);
-            //
-            //        // SUB L
-            //        case 0x95:
-            //          a = SUB8(a, l);
-            //
-            //        // SUB (HL)
-            //        case 0x96:
-            //          a = SUB8(a, memory.readByte(hl));
-            //          tStates += 3;
-            //
-            //        // SUB A
-            //        case 0x97:
-            //          a = SUB8(a, a);
-            //
-            //        // SBC A, B
-            //        case 0x98:
-            //          a = SBC8(a, b);
-            //
-            //        // SBC A, C
-            //        case 0x99:
-            //          a = SBC8(a, c);
-            //
-            //        // SBC A, D
-            //        case 0x9A:
-            //          a = SBC8(a, d);
-            //
-            //        // SBC A, E
-            //        case 0x9B:
-            //          a = SBC8(a, e);
-            //
-            //        // SBC A, H
-            //        case 0x9C:
-            //          a = SBC8(a, h);
-            //
-            //        // SBC A, L
-            //        case 0x9D:
-            //          a = SBC8(a, l);
-            //
-            //        // SBC A, (HL)
-            //        case 0x9E:
-            //          a = SBC8(a, memory.readByte(hl));
-            //          tStates += 3;
-            //
-            //        // SBC A, A
-            //        case 0x9F:
-            //          a = SBC8(a, a);
-            //
-            //        // AND B
-            //        case 0xA0:
-            //          a = AND(a, b);
-            //
-            //        // AND C
-            //        case 0xA1:
-            //          a = AND(a, c);
-            //
-            //        // AND D
-            //        case 0xA2:
-            //          a = AND(a, d);
-            //
-            //        // AND E
-            //        case 0xA3:
-            //          a = AND(a, e);
-            //
-            //        // AND H
-            //        case 0xA4:
-            //          a = AND(a, h);
-            //
-            //        // AND L
-            //        case 0xA5:
-            //          a = AND(a, l);
-            //
-            //        // AND (HL)
-            //        case 0xA6:
-            //          a = AND(a, memory.readByte(hl));
-            //          tStates += 3;
-            //
-            //        // AND A
-            //        case 0xA7:
-            //          a = AND(a, a);
-            //
-            //        // XOR B
-            //        case 0xA8:
-            //          a = XOR(a, b);
-            //
-            //        // XOR C
-            //        case 0xA9:
-            //          a = XOR(a, c);
-            //
-            //        // XOR D
-            //        case 0xAA:
-            //          a = XOR(a, d);
-            //
-            //        // XOR E
-            //        case 0xAB:
-            //          a = XOR(a, e);
-            //
-            //        // XOR H
-            //        case 0xAC:
-            //          a = XOR(a, h);
-            //
-            //        // XOR L
-            //        case 0xAD:
-            //          a = XOR(a, l);
-            //
-            //        // XOR (HL)
-            //        case 0xAE:
-            //          a = XOR(a, memory.readByte(hl));
-            //          tStates += 3;
-            //
-            //        // XOR A
-            //        case 0xAF:
-            //          a = XOR(a, a);
-            //
-            //        // OR B
-            //        case 0xB0:
-            //          a = OR(a, b);
-            //
-            //        // OR C
-            //        case 0xB1:
-            //          a = OR(a, c);
-            //
-            //        // OR D
-            //        case 0xB2:
-            //          a = OR(a, d);
-            //
-            //        // OR E
-            //        case 0xB3:
-            //          a = OR(a, e);
-            //
-            //        // OR H
-            //        case 0xB4:
-            //          a = OR(a, h);
-            //
-            //        // OR L
-            //        case 0xB5:
-            //          a = OR(a, l);
-            //
-            //        // OR (HL)
-            //        case 0xB6:
-            //          a = OR(a, memory.readByte(hl));
-            //          tStates += 3;
-            //
-            //        // OR A
-            //        case 0xB7:
-            //          a = OR(a, a);
-            //
-            //        // CP B
-            //        case 0xB8:
-            //          CP(b);
-            //
-            //        // CP C
-            //        case 0xB9:
-            //          CP(c);
-            //
-            //        // CP D
-            //        case 0xBA:
-            //          CP(d);
-            //
-            //        // CP E
-            //        case 0xBB:
-            //          CP(e);
-            //
-            //        // CP H
-            //        case 0xBC:
-            //          CP(h);
-            //
-            //        // CP L
-            //        case 0xBD:
-            //          CP(l);
-            //
-            //        // CP (HL)
-            //        case 0xBE:
-            //          CP(memory.readByte(hl));
-            //          tStates += 3;
-            //
-            //        // CP A
-            //        case 0xBF:
-            //          CP(a);
-            //
-            //        // RET NZ
-            //        case 0xC0:
-            //          if (!fZ) {
-            //            pc = POP();
-            //            tStates += 11;
-            //          } else {
-            //            tStates += 5;
-            //          }
-            //
-            //        // POP BC
-            //        case 0xC1:
-            //          bc = POP();
-            //          tStates += 10;
-            //
-            //        // JP NZ, **
-            //        case 0xC2:
-            //          if (!fZ) {
-            //            pc = getNextWord();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //          }
-            //          tStates += 10;
-            //
-            //        // JP **
-            //        case 0xC3:
-            //          pc = getNextWord();
-            //          tStates += 10;
-            //
-            //        // CALL NZ, **
-            //        case 0xC4:
-            //          if (!fZ) {
-            //            CALL();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //            tStates += 10;
-            //          }
-            //
-            //        // PUSH BC
-            //        case 0xC5:
-            //          PUSH(bc);
-            //          tStates += 11;
-            //
-            //        // ADD A, *
-            //        case 0xC6:
-            //          a = ADD8(a, getNextByte());
-            //          tStates += 3;
-            //
-            //        // RST 00h
-            //        case 0xC7:
-            //          RST(0x00);
-            //
-            //        // RET Z
-            //        case 0xC8:
-            //          if (fZ) {
-            //            pc = POP();
-            //            tStates += 11;
-            //          } else {
-            //            tStates += 5;
-            //          }
-            //
-            //        // RET
-            //        case 0xC9:
-            //          pc = POP();
-            //          tStates += 10;
-            //
-            //        // JP Z, **
-            //        case 0xCA:
-            //          if (fZ) {
-            //            pc = getNextWord();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //          }
-            //          tStates += 10;
-            //
-            //        // BITWISE INSTRUCTIONS
-            //        case 0xCB:
-            //          DecodeCBOpcode();
-            //
-            //        // CALL Z, **
-            //        case 0xCC:
-            //          if (fZ) {
-            //            CALL();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //            tStates += 10;
-            //          }
-            //
-            //        // CALL **
-            //        case 0xCD:
-            //          CALL();
-            //
-            //        // ADC A, *
-            //        case 0xCE:
-            //          a = ADC8(a, getNextByte());
-            //          tStates += 3;
-            //
-            //        // RST 08h
-            //        case 0xCF:
-            //          RST(0x08);
-            //
-            //        // RET NC
-            //        case 0xD0:
-            //          if (!fC) {
-            //            pc = POP();
-            //            tStates += 11;
-            //          } else {
-            //            tStates += 5;
-            //          }
-            //
-            //        // POP DE
-            //        case 0xD1:
-            //          de = POP();
-            //          tStates += 10;
-            //
-            //        // JP NC, **
-            //        case 0xD2:
-            //          if (!fC) {
-            //            pc = getNextWord();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //          }
-            //          tStates += 10;
-            //
-            //        // OUT (*), A
-            //        case 0xD3:
-            //          OUTA(getNextByte(), a);
-            //          tStates += 11;
-            //
-            //        // CALL NC, **
-            //        case 0xD4:
-            //          if (!fC) {
-            //            CALL();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //            tStates += 10;
-            //          }
-            //
-            //        // PUSH DE
-            //        case 0xD5:
-            //          PUSH(de);
-            //          tStates += 11;
-            //
-            //        // SUB *
-            //        case 0xD6:
-            //          a = SUB8(a, getNextByte());
-            //          tStates += 3;
-            //
-            //        // RST 10h
-            //        case 0xD7:
-            //          RST(0x10);
-            //
-            //        // RET C
-            //        case 0xD8:
-            //          if (fC) {
-            //            pc = POP();
-            //            tStates += 11;
-            //          } else {
-            //            tStates += 5;
-            //          }
-            //
-            //        // EXX
-            //        case 0xD9:
-            //          final oldB = b, oldC = c, oldD = d, oldE = e, oldH = h, oldL = l;
-            //          b = b_;
-            //          c = c_;
-            //          d = d_;
-            //          e = e_;
-            //          h = h_;
-            //          l = l_;
-            //          b_ = oldB;
-            //          c_ = oldC;
-            //          d_ = oldD;
-            //          e_ = oldE;
-            //          h_ = oldH;
-            //          l_ = oldL;
-            //          tStates += 4;
-            //
-            //        // JP C, **
-            //        case 0xDA:
-            //          if (fC) {
-            //            pc = getNextWord();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //          }
-            //          tStates += 10;
-            //
-            //        // IN A, (*)
-            //        case 0xDB:
-            //          INA(getNextByte());
-            //          tStates += 11;
-            //
-            //        // CALL C, **
-            //        case 0xDC:
-            //          if (fC) {
-            //            CALL();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //            tStates += 10;
-            //          }
-            //
-            //        // IX OPERATIONS
-            //        case 0xDD:
-            //          DecodeDDOpcode();
-            //
-            //        // SBC A, *
-            //        case 0xDE:
-            //          a = SBC8(a, getNextByte());
-            //          tStates += 3;
-            //
-            //        // RST 18h
-            //        case 0xDF:
-            //          RST(0x18);
-            //
-            //        // RET PO
-            //        case 0xE0:
-            //          if (!fPV) {
-            //            pc = POP();
-            //            tStates += 11;
-            //          } else {
-            //            tStates += 5;
-            //          }
-            //
-            //        // POP HL
-            //        case 0xE1:
-            //          hl = POP();
-            //          tStates += 10;
-            //
-            //        // JP PO, **
-            //        case 0xE2:
-            //          if (!fPV) {
-            //            pc = getNextWord();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //          }
-            //          tStates += 10;
-            //
-            //        // EX (SP), HL
-            //        case 0xE3:
-            //          final temp = hl;
-            //          hl = memory.readWord(sp);
-            //          memory.writeWord(sp, temp);
-            //          tStates += 19;
-            //
-            //        // CALL PO, **
-            //        case 0xE4:
-            //          if (!fPV) {
-            //            CALL();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //            tStates += 10;
-            //          }
-            //
-            //        // PUSH HL
-            //        case 0xE5:
-            //          PUSH(hl);
-            //          tStates += 11;
-            //
-            //        // AND *
-            //        case 0xE6:
-            //          a = AND(a, getNextByte());
-            //          tStates += 3;
-            //
-            //        // RST 20h
-            //        case 0xE7:
-            //          RST(0x20);
-            //
-            //        // RET PE
-            //        case 0xE8:
-            //          if (fPV) {
-            //            pc = POP();
-            //            tStates += 11;
-            //          } else {
-            //            tStates += 5;
-            //          }
-            //
-            //        // JP (HL)
-            //        // note that the brackets in the instruction are an eccentricity, the result
-            //        // should be hl rather than the contents of addr(hl)
-            //        case 0xE9:
-            //          pc = hl;
-            //          tStates += 4;
-            //
-            //        // JP PE, **
-            //        case 0xEA:
-            //          if (fPV) {
-            //            pc = getNextWord();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //          }
-            //          tStates += 10;
-            //
-            //        // EX DE, HL
-            //        case 0xEB:
-            //          final oldD = d, oldE = e;
-            //          d = h;
-            //          e = l;
-            //          h = oldD;
-            //          l = oldE;
-            //          tStates += 4;
-            //
-            //        // CALL PE, **
-            //        case 0xEC:
-            //          if (fPV) {
-            //            CALL();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //            tStates += 10;
-            //          }
-            //
-            //        // EXTD INSTRUCTIONS
-            //        case 0xED:
-            //          DecodeEDOpcode();
-            //
-            //        // XOR *
-            //        case 0xEE:
-            //          a = XOR(a, getNextByte());
-            //          tStates += 3;
-            //
-            //        // RST 28h
-            //        case 0xEF:
-            //          RST(0x28);
-            //
-            //        // RET P
-            //        case 0xF0:
-            //          if (!fS) {
-            //            pc = POP();
-            //            tStates += 11;
-            //          } else {
-            //            tStates += 5;
-            //          }
-            //
-            //        // POP AF
-            //        case 0xF1:
-            //          af = POP();
-            //          tStates += 10;
-            //
-            //        // JP P, **
-            //        case 0xF2:
-            //          if (!fS) {
-            //            pc = getNextWord();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //          }
-            //          tStates += 10;
-            //
-            //        // DI
-            //        case 0xF3:
-            //          iff1 = false;
-            //          iff2 = false;
-            //          tStates += 4;
-            //
-            //        // CALL P, **
-            //        case 0xF4:
-            //          if (!fS) {
-            //            CALL();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //            tStates += 10;
-            //          }
-            //
-            //        // PUSH AF
-            //        case 0xF5:
-            //          PUSH(af);
-            //          tStates += 11;
-            //
-            //        // OR *
-            //        case 0xF6:
-            //          a = OR(a, getNextByte());
-            //          tStates += 3;
-            //
-            //        // RST 30h
-            //        case 0xF7:
-            //          RST(0x30);
-            //
-            //        // RET M
-            //        case 0xF8:
-            //          if (fS) {
-            //            pc = POP();
-            //            tStates += 11;
-            //          } else {
-            //            tStates += 5;
-            //          }
-            //
-            //        // LD SP, HL
-            //        case 0xF9:
-            //          sp = hl;
-            //          tStates += 6;
-            //
-            //        // JP M, **
-            //        case 0xFA:
-            //          if (fS) {
-            //            pc = getNextWord();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //          }
-            //          tStates += 10;
-            //
-            //        // EI
-            //        case 0xFB:
-            //          iff1 = true;
-            //          iff2 = true;
-            //          tStates += 4;
-            //
+            
+        // LD A, (**)
+        case 0x3A:
+            a = memory.readByte(getNextWord())
+            tStates += 13
+        //
+        //        // DEC SP
+        //        case 0x3B:
+        //          sp = (sp - 1) % 0x10000;
+        //          tStates += 6;
+        //
+        //        // INC A
+        //        case 0x3C:
+        //          a = INC(a);
+        //
+        //        // DEC A
+        //        case 0x3D:
+        //          a = DEC(a);
+        //
+        // LD A, *
+        case 0x3E:
+            a = getNextByte()
+            tStates += 7
+        //
+        //        // CCF
+        //        case 0x3F:
+        //          CCF();
+        //
+        // LD B, B
+        case 0x40:
+            tStates += 4
+            
+        // LD B, C
+        case 0x41:
+            b = c
+            tStates += 4
+            
+        // LD B, D
+        case 0x42:
+            b = d
+            tStates += 4
+            
+        // LD B, E
+        case 0x43:
+            b = e
+            tStates += 4
+            
+        // LD B, H
+        case 0x44:
+            b = h
+            tStates += 4
+            
+        // LD B, L
+        case 0x45:
+            b = l
+            tStates += 4
+            
+        // LD B, (HL)
+        case 0x46:
+            b = memory.readByte(hl)
+            tStates += 7
+            
+        // LD B, A
+        case 0x47:
+            b = a
+            tStates += 4
+            
+        // LD C, B
+        case 0x48:
+            c = b
+            tStates += 4
+            
+        // LD C, C
+        case 0x49:
+            tStates += 4
+            
+        // LD C, D
+        case 0x4A:
+            c = d
+            tStates += 4
+            
+        // LD C, E
+        case 0x4B:
+            c = e
+            tStates += 4
+            
+        // LD C, H
+        case 0x4C:
+            c = h
+            tStates += 4
+            
+        // LD C, L
+        case 0x4D:
+            c = l
+            tStates += 4
+            
+        // LD C, (HL)
+        case 0x4E:
+            c = memory.readByte(hl)
+            tStates += 7
+            
+        // LD C, A
+        case 0x4F:
+            c = a
+            tStates += 4
+            
+        // LD D, B
+        case 0x50:
+            d = b
+            tStates += 4
+            
+        // LD D, C
+        case 0x51:
+            d = c
+            tStates += 4
+            
+        // LD D, D
+        case 0x52:
+            tStates += 4
+            
+        // LD D, E
+        case 0x53:
+            d = e
+            tStates += 4
+            
+        // LD D, H
+        case 0x54:
+            d = h
+            tStates += 4
+            
+        // LD D, L
+        case 0x55:
+            d = l
+            tStates += 4
+            
+        // LD D, (HL)
+        case 0x56:
+            d = memory.readByte(hl)
+            tStates += 7
+            
+        // LD D, A
+        case 0x57:
+            d = a
+            tStates += 4
+            
+        // LD E, B
+        case 0x58:
+            e = b
+            tStates += 4
+            
+        // LD E, C
+        case 0x59:
+            e = c
+            tStates += 4
+            
+        // LD E, D
+        case 0x5A:
+            e = d
+            tStates += 4
+            
+        // LD E, E
+        case 0x5B:
+            tStates += 4
+            
+        // LD E, H
+        case 0x5C:
+            e = h
+            tStates += 4
+            
+        // LD E, L
+        case 0x5D:
+            e = l
+            tStates += 4
+            
+        // LD E, (HL)
+        case 0x5E:
+            e = memory.readByte(hl)
+            tStates += 7
+            
+        // LD E, A
+        case 0x5F:
+            e = a
+            tStates += 4
+            
+        // LD H, B
+        case 0x60:
+            h = b
+            tStates += 4
+            
+        // LD H, C
+        case 0x61:
+            h = c
+            tStates += 4
+            
+        // LD H, D
+        case 0x62:
+            h = d
+            tStates += 4
+            
+        // LD H, E
+        case 0x63:
+            h = e
+            tStates += 4
+            
+        // LD H, H
+        case 0x64:
+            tStates += 4
+            
+        // LD H, L
+        case 0x65:
+            h = l
+            tStates += 4
+            
+        // LD H, (HL)
+        case 0x66:
+            h = memory.readByte(hl)
+            tStates += 7
+            
+        // LD H, A
+        case 0x67:
+            h = a
+            tStates += 4
+            
+        // LD L, B
+        case 0x68:
+            l = b
+            tStates += 4
+            
+        // LD L, C
+        case 0x69:
+            l = c
+            tStates += 4
+            
+        // LD L, D
+        case 0x6A:
+            l = d
+            tStates += 4
+            
+        // LD L, E
+        case 0x6B:
+            l = e
+            tStates += 4
+            
+        // LD L, H
+        case 0x6C:
+            l = h
+            tStates += 4
+            
+        // LD L, L
+        case 0x6D:
+            tStates += 4
+            
+        // LD L, (HL)
+        case 0x6E:
+            l = memory.readByte(hl)
+            tStates += 7
+            
+        // LD L, A
+        case 0x6F:
+            l = a
+            tStates += 4
+            
+        // LD (HL), B
+        case 0x70:
+            memory.writeByte(hl, b)
+            tStates += 7
+            
+        // LD (HL), C
+        case 0x71:
+            memory.writeByte(hl, c)
+            tStates += 7
+            
+        // LD (HL), D
+        case 0x72:
+            memory.writeByte(hl, d)
+            tStates += 7
+            
+        // LD (HL), E
+        case 0x73:
+            memory.writeByte(hl, e)
+            tStates += 7
+            
+        // LD (HL), H
+        case 0x74:
+            memory.writeByte(hl, h)
+            tStates += 7
+            
+        // LD (HL), L
+        case 0x75:
+            memory.writeByte(hl, l)
+            tStates += 7
+        //
+        //        // HALT
+        //        case 0x76:
+        //          tStates += 4;
+        //          halt = true;
+        //          pc--; // return to HALT, just keep executing it.
+        //
+        // LD (HL), A
+        case 0x77:
+            memory.writeByte(hl, a)
+            tStates += 7
+            
+        // LD A, B
+        case 0x78:
+            a = b
+            tStates += 4
+            
+        // LD A, C
+        case 0x79:
+            a = c
+            tStates += 4
+            
+        // LD A, D
+        case 0x7A:
+            a = d
+            tStates += 4
+            
+        // LD A, E
+        case 0x7B:
+            a = e
+            tStates += 4
+            
+        // LD A, H
+        case 0x7C:
+            a = h
+            tStates += 4
+            
+        // LD A, L
+        case 0x7D:
+            a = l
+            tStates += 4
+            
+        // LD A, (HL)
+        case 0x7E:
+            a = memory.readByte(hl)
+            tStates += 7
+            
+        // LD A, A
+        case 0x7F:
+            tStates += 4
+        //
+        //        // ADD A, B
+        //        case 0x80:
+        //          a = ADD8(a, b);
+        //
+        //        // ADD A, C
+        //        case 0x81:
+        //          a = ADD8(a, c);
+        //
+        //        // ADD A, D
+        //        case 0x82:
+        //          a = ADD8(a, d);
+        //
+        //        // ADD A, E
+        //        case 0x83:
+        //          a = ADD8(a, e);
+        //
+        //        // ADD A, H
+        //        case 0x84:
+        //          a = ADD8(a, h);
+        //
+        //        // ADD A, L
+        //        case 0x85:
+        //          a = ADD8(a, l);
+        //
+        //        // ADD A, (HL)
+        //        case 0x86:
+        //          a = ADD8(a, memory.readByte(hl));
+        //          tStates += 3;
+        //
+        //        // ADD A, A
+        //        case 0x87:
+        //          a = ADD8(a, a);
+        //
+        //        // ADC A, B
+        //        case 0x88:
+        //          a = ADC8(a, b);
+        //
+        //        // ADC A, C
+        //        case 0x89:
+        //          a = ADC8(a, c);
+        //
+        //        // ADC A, D
+        //        case 0x8A:
+        //          a = ADC8(a, d);
+        //
+        //        // ADC A, E
+        //        case 0x8B:
+        //          a = ADC8(a, e);
+        //
+        //        // ADC A, H
+        //        case 0x8C:
+        //          a = ADC8(a, h);
+        //
+        //        // ADC A, L
+        //        case 0x8D:
+        //          a = ADC8(a, l);
+        //
+        //        // ADC A, (HL)
+        //        case 0x8E:
+        //          a = ADC8(a, memory.readByte(hl));
+        //          tStates += 3;
+        //
+        //        // ADC A, A
+        //        case 0x8F:
+        //          a = ADC8(a, a);
+        //
+        //        // SUB B
+        //        case 0x90:
+        //          a = SUB8(a, b);
+        //
+        //        // SUB C
+        //        case 0x91:
+        //          a = SUB8(a, c);
+        //
+        //        // SUB D
+        //        case 0x92:
+        //          a = SUB8(a, d);
+        //
+        //        // SUB E
+        //        case 0x93:
+        //          a = SUB8(a, e);
+        //
+        //        // SUB H
+        //        case 0x94:
+        //          a = SUB8(a, h);
+        //
+        //        // SUB L
+        //        case 0x95:
+        //          a = SUB8(a, l);
+        //
+        //        // SUB (HL)
+        //        case 0x96:
+        //          a = SUB8(a, memory.readByte(hl));
+        //          tStates += 3;
+        //
+        //        // SUB A
+        //        case 0x97:
+        //          a = SUB8(a, a);
+        //
+        //        // SBC A, B
+        //        case 0x98:
+        //          a = SBC8(a, b);
+        //
+        //        // SBC A, C
+        //        case 0x99:
+        //          a = SBC8(a, c);
+        //
+        //        // SBC A, D
+        //        case 0x9A:
+        //          a = SBC8(a, d);
+        //
+        //        // SBC A, E
+        //        case 0x9B:
+        //          a = SBC8(a, e);
+        //
+        //        // SBC A, H
+        //        case 0x9C:
+        //          a = SBC8(a, h);
+        //
+        //        // SBC A, L
+        //        case 0x9D:
+        //          a = SBC8(a, l);
+        //
+        //        // SBC A, (HL)
+        //        case 0x9E:
+        //          a = SBC8(a, memory.readByte(hl));
+        //          tStates += 3;
+        //
+        //        // SBC A, A
+        //        case 0x9F:
+        //          a = SBC8(a, a);
+        //
+        //        // AND B
+        //        case 0xA0:
+        //          a = AND(a, b);
+        //
+        //        // AND C
+        //        case 0xA1:
+        //          a = AND(a, c);
+        //
+        //        // AND D
+        //        case 0xA2:
+        //          a = AND(a, d);
+        //
+        //        // AND E
+        //        case 0xA3:
+        //          a = AND(a, e);
+        //
+        //        // AND H
+        //        case 0xA4:
+        //          a = AND(a, h);
+        //
+        //        // AND L
+        //        case 0xA5:
+        //          a = AND(a, l);
+        //
+        //        // AND (HL)
+        //        case 0xA6:
+        //          a = AND(a, memory.readByte(hl));
+        //          tStates += 3;
+        //
+        //        // AND A
+        //        case 0xA7:
+        //          a = AND(a, a);
+        //
+        //        // XOR B
+        //        case 0xA8:
+        //          a = XOR(a, b);
+        //
+        //        // XOR C
+        //        case 0xA9:
+        //          a = XOR(a, c);
+        //
+        //        // XOR D
+        //        case 0xAA:
+        //          a = XOR(a, d);
+        //
+        //        // XOR E
+        //        case 0xAB:
+        //          a = XOR(a, e);
+        //
+        //        // XOR H
+        //        case 0xAC:
+        //          a = XOR(a, h);
+        //
+        //        // XOR L
+        //        case 0xAD:
+        //          a = XOR(a, l);
+        //
+        //        // XOR (HL)
+        //        case 0xAE:
+        //          a = XOR(a, memory.readByte(hl));
+        //          tStates += 3;
+        //
+        //        // XOR A
+        //        case 0xAF:
+        //          a = XOR(a, a);
+        //
+        //        // OR B
+        //        case 0xB0:
+        //          a = OR(a, b);
+        //
+        //        // OR C
+        //        case 0xB1:
+        //          a = OR(a, c);
+        //
+        //        // OR D
+        //        case 0xB2:
+        //          a = OR(a, d);
+        //
+        //        // OR E
+        //        case 0xB3:
+        //          a = OR(a, e);
+        //
+        //        // OR H
+        //        case 0xB4:
+        //          a = OR(a, h);
+        //
+        //        // OR L
+        //        case 0xB5:
+        //          a = OR(a, l);
+        //
+        //        // OR (HL)
+        //        case 0xB6:
+        //          a = OR(a, memory.readByte(hl));
+        //          tStates += 3;
+        //
+        //        // OR A
+        //        case 0xB7:
+        //          a = OR(a, a);
+        //
+        //        // CP B
+        //        case 0xB8:
+        //          CP(b);
+        //
+        //        // CP C
+        //        case 0xB9:
+        //          CP(c);
+        //
+        //        // CP D
+        //        case 0xBA:
+        //          CP(d);
+        //
+        //        // CP E
+        //        case 0xBB:
+        //          CP(e);
+        //
+        //        // CP H
+        //        case 0xBC:
+        //          CP(h);
+        //
+        //        // CP L
+        //        case 0xBD:
+        //          CP(l);
+        //
+        //        // CP (HL)
+        //        case 0xBE:
+        //          CP(memory.readByte(hl));
+        //          tStates += 3;
+        //
+        //        // CP A
+        //        case 0xBF:
+        //          CP(a);
+        //
+        //        // RET NZ
+        //        case 0xC0:
+        //          if (!fZ) {
+        //            pc = POP();
+        //            tStates += 11;
+        //          } else {
+        //            tStates += 5;
+        //          }
+        //
+        //        // POP BC
+        //        case 0xC1:
+        //          bc = POP();
+        //          tStates += 10;
+        //
+        //        // JP NZ, **
+        //        case 0xC2:
+        //          if (!fZ) {
+        //            pc = getNextWord();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //          }
+        //          tStates += 10;
+        //
+        //        // JP **
+        //        case 0xC3:
+        //          pc = getNextWord();
+        //          tStates += 10;
+        //
+        //        // CALL NZ, **
+        //        case 0xC4:
+        //          if (!fZ) {
+        //            CALL();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //            tStates += 10;
+        //          }
+        //
+        //        // PUSH BC
+        //        case 0xC5:
+        //          PUSH(bc);
+        //          tStates += 11;
+        //
+        //        // ADD A, *
+        //        case 0xC6:
+        //          a = ADD8(a, getNextByte());
+        //          tStates += 3;
+        //
+        //        // RST 00h
+        //        case 0xC7:
+        //          RST(0x00);
+        //
+        //        // RET Z
+        //        case 0xC8:
+        //          if (fZ) {
+        //            pc = POP();
+        //            tStates += 11;
+        //          } else {
+        //            tStates += 5;
+        //          }
+        //
+        //        // RET
+        //        case 0xC9:
+        //          pc = POP();
+        //          tStates += 10;
+        //
+        //        // JP Z, **
+        //        case 0xCA:
+        //          if (fZ) {
+        //            pc = getNextWord();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //          }
+        //          tStates += 10;
+        //
+        //        // BITWISE INSTRUCTIONS
+        //        case 0xCB:
+        //          DecodeCBOpcode();
+        //
+        //        // CALL Z, **
+        //        case 0xCC:
+        //          if (fZ) {
+        //            CALL();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //            tStates += 10;
+        //          }
+        //
+        //        // CALL **
+        //        case 0xCD:
+        //          CALL();
+        //
+        //        // ADC A, *
+        //        case 0xCE:
+        //          a = ADC8(a, getNextByte());
+        //          tStates += 3;
+        //
+        //        // RST 08h
+        //        case 0xCF:
+        //          RST(0x08);
+        //
+        //        // RET NC
+        //        case 0xD0:
+        //          if (!fC) {
+        //            pc = POP();
+        //            tStates += 11;
+        //          } else {
+        //            tStates += 5;
+        //          }
+        //
+        //        // POP DE
+        //        case 0xD1:
+        //          de = POP();
+        //          tStates += 10;
+        //
+        //        // JP NC, **
+        //        case 0xD2:
+        //          if (!fC) {
+        //            pc = getNextWord();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //          }
+        //          tStates += 10;
+        //
+        //        // OUT (*), A
+        //        case 0xD3:
+        //          OUTA(getNextByte(), a);
+        //          tStates += 11;
+        //
+        //        // CALL NC, **
+        //        case 0xD4:
+        //          if (!fC) {
+        //            CALL();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //            tStates += 10;
+        //          }
+        //
+        //        // PUSH DE
+        //        case 0xD5:
+        //          PUSH(de);
+        //          tStates += 11;
+        //
+        //        // SUB *
+        //        case 0xD6:
+        //          a = SUB8(a, getNextByte());
+        //          tStates += 3;
+        //
+        //        // RST 10h
+        //        case 0xD7:
+        //          RST(0x10);
+        //
+        //        // RET C
+        //        case 0xD8:
+        //          if (fC) {
+        //            pc = POP();
+        //            tStates += 11;
+        //          } else {
+        //            tStates += 5;
+        //          }
+        //
+        // EXX
+        case 0xD9:
+            swap(&b, &b_)
+            swap(&c, &c_)
+            swap(&d, &d_)
+            swap(&e, &e_)
+            swap(&h, &h_)
+            swap(&l, &l_)
+            tStates += 4
+        //
+        //        // JP C, **
+        //        case 0xDA:
+        //          if (fC) {
+        //            pc = getNextWord();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //          }
+        //          tStates += 10;
+        //
+        //        // IN A, (*)
+        //        case 0xDB:
+        //          INA(getNextByte());
+        //          tStates += 11;
+        //
+        //        // CALL C, **
+        //        case 0xDC:
+        //          if (fC) {
+        //            CALL();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //            tStates += 10;
+        //          }
+        //
+        //        // IX OPERATIONS
+        //        case 0xDD:
+        //          DecodeDDOpcode();
+        //
+        //        // SBC A, *
+        //        case 0xDE:
+        //          a = SBC8(a, getNextByte());
+        //          tStates += 3;
+        //
+        //        // RST 18h
+        //        case 0xDF:
+        //          RST(0x18);
+        //
+        //        // RET PO
+        //        case 0xE0:
+        //          if (!fPV) {
+        //            pc = POP();
+        //            tStates += 11;
+        //          } else {
+        //            tStates += 5;
+        //          }
+        //
+        //        // POP HL
+        //        case 0xE1:
+        //          hl = POP();
+        //          tStates += 10;
+        //
+        //        // JP PO, **
+        //        case 0xE2:
+        //          if (!fPV) {
+        //            pc = getNextWord();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //          }
+        //          tStates += 10;
+        //
+        //        // EX (SP), HL
+        //        case 0xE3:
+        //          final temp = hl;
+        //          hl = memory.readWord(sp);
+        //          memory.writeWord(sp, temp);
+        //          tStates += 19;
+        //
+        //        // CALL PO, **
+        //        case 0xE4:
+        //          if (!fPV) {
+        //            CALL();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //            tStates += 10;
+        //          }
+        //
+        //        // PUSH HL
+        //        case 0xE5:
+        //          PUSH(hl);
+        //          tStates += 11;
+        //
+        //        // AND *
+        //        case 0xE6:
+        //          a = AND(a, getNextByte());
+        //          tStates += 3;
+        //
+        //        // RST 20h
+        //        case 0xE7:
+        //          RST(0x20);
+        //
+        //        // RET PE
+        //        case 0xE8:
+        //          if (fPV) {
+        //            pc = POP();
+        //            tStates += 11;
+        //          } else {
+        //            tStates += 5;
+        //          }
+        //
+            
+        // JP (HL)
+        // Note that the brackets in the instruction are an eccentricity, the result
+        // should be hl rather than the contents of addr(hl)
+        case 0xE9:
+            pc = hl
+            tStates += 4
+            
+        // JP PE, **
+        case 0xEA:
+            if flags.contains(.pv) {
+                pc = getNextWord()
+            } else {
+                pc &+= 2
+            }
+            tStates += 10
+            
+        // EX DE, HL
+        case 0xEB:
+            swap(&d, &h)
+            swap(&e, &l)
+            tStates += 4
+        //
+        //        // CALL PE, **
+        //        case 0xEC:
+        //          if (fPV) {
+        //            CALL();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //            tStates += 10;
+        //          }
+        //
+        //        // EXTD INSTRUCTIONS
+        //        case 0xED:
+        //          DecodeEDOpcode();
+        //
+        //        // XOR *
+        //        case 0xEE:
+        //          a = XOR(a, getNextByte());
+        //          tStates += 3;
+        //
+        //        // RST 28h
+        //        case 0xEF:
+        //          RST(0x28);
+        //
+        //        // RET P
+        //        case 0xF0:
+        //          if (!fS) {
+        //            pc = POP();
+        //            tStates += 11;
+        //          } else {
+        //            tStates += 5;
+        //          }
+        //
+        //        // POP AF
+        //        case 0xF1:
+        //          af = POP();
+        //          tStates += 10;
+        //
+        // JP P, **
+        case 0xF2:
+            if !flags.contains(.s) {
+                pc = getNextWord()
+            } else {
+                pc &+= 2
+            }
+            tStates += 10
+
+        // DI
+        case 0xF3:
+            iff1 = false
+            iff2 = false
+            tStates += 4
+            
+        //        // CALL P, **
+        //        case 0xF4:
+        //          if (!fS) {
+        //            CALL();
+        //          } else {
+        //            pc = (pc + 2) % 0x10000;
+        //            tStates += 10;
+        //          }
+        //
+        //        // PUSH AF
+        //        case 0xF5:
+        //          PUSH(af);
+        //          tStates += 11;
+        //
+        //        // OR *
+        //        case 0xF6:
+        //          a = OR(a, getNextByte());
+        //          tStates += 3;
+        //
+        //        // RST 30h
+        //        case 0xF7:
+        //          RST(0x30);
+        //
+        //        // RET M
+        //        case 0xF8:
+        //          if (fS) {
+        //            pc = POP();
+        //            tStates += 11;
+        //          } else {
+        //            tStates += 5;
+        //          }
+        //
+        // LD SP, HL
+        case 0xF9:
+            sp = hl
+            tStates += 6
+            
+        // JP M, **
+        case 0xFA:
+            if flags.contains(.s) {
+                pc = getNextWord()
+            } else {
+                pc &+= 2
+            }
+            tStates += 10
+            
+        // EI
+        case 0xFB:
+            iff1 = true
+            iff2 = true
+            tStates += 4
+            
             //        // CALL M, **
             //        case 0xFC:
             //          if (fS) {
@@ -1522,10 +1820,7 @@ public struct Z80 {
             //        case 0xFF:
             //          RST(0x38);
             //      }
-            //
-            //      return true;
-            //    }
-            
+
         default:
             return false
         }
