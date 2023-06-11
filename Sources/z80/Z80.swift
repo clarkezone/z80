@@ -374,15 +374,15 @@ public struct Z80 {
     }
 
     /// Add (16-bit)
-     mutating func ADD16(_ xx: UInt16, _ yy: UInt16, withCarry: Bool = false) -> UInt16 {
+    mutating func ADD16(_ xx: UInt16, _ yy: UInt16, withCarry: Bool = false) -> UInt16 {
         let carry = withCarry ? 1 : 0
 
-         flags.set(.h, basedOn: Int(xx & 0x0FFF) + Int(yy & 0x0FFF) + carry > 0x0FFF)
-         flags.set(.c, basedOn: Int(xx) + Int(yy) + carry > 0xFFFF)
-         let result : UInt16 = xx &+ yy &+ UInt16(carry)
-         flags.set(.f5, basedOn: result.isBitSet(13) )
-         flags.set(.f3, basedOn: result.isBitSet(11) )
-         flags.remove(.n)
+        flags.set(.h, basedOn: Int(xx & 0x0FFF) + Int(yy & 0x0FFF) + carry > 0x0FFF)
+        flags.set(.c, basedOn: Int(xx) + Int(yy) + carry > 0xFFFF)
+        let result: UInt16 = xx &+ yy &+ UInt16(carry)
+        flags.set(.f5, basedOn: result.isBitSet(13))
+        flags.set(.f3, basedOn: result.isBitSet(11))
+        flags.remove(.n)
 
         tStates += 11
 
@@ -390,12 +390,12 @@ public struct Z80 {
     }
 
     /// Subtract with Carry (8-bit)
-    mutating func SBC8(_ x : UInt8, _ y : UInt8) -> UInt8 {
+    mutating func SBC8(_ x: UInt8, _ y: UInt8) -> UInt8 {
         return SUB8(x, y, withCarry: flags.contains(.c))
     }
 
     /// Subtract with Carry (16-bit)
-    mutating func SBC16(_ xx : UInt16, _ yy: UInt16) -> UInt16 {
+    mutating func SBC16(_ xx: UInt16, _ yy: UInt16) -> UInt16 {
         let carry = flags.contains(.c) ? 1 : 0
 
         flags.set(.c, basedOn: Int(xx) < (Int(yy) + carry))
@@ -405,9 +405,9 @@ public struct Z80 {
         // overflow in subtract only occurs when operand signs are different
         let overflowCheck = xx.isSignedBitSet() != yy.isSignedBitSet()
 
-        let result : UInt16 = xx &- yy &- UInt16(carry)
-        flags.set(.f5, basedOn: result.isBitSet(13) )
-        flags.set(.f3, basedOn: result.isBitSet(11) )
+        let result: UInt16 = xx &- yy &- UInt16(carry)
+        flags.set(.f5, basedOn: result.isBitSet(13))
+        flags.set(.f3, basedOn: result.isBitSet(11))
         flags.setZeroFlag(basedOn: result)
         flags.insert(.n)
 
@@ -436,8 +436,8 @@ public struct Z80 {
         let overflowCheck = x.isSignedBitSet() != y.isSignedBitSet()
 
         let result: UInt8 = x &- y &- UInt8(carry)
-        flags.set(.f5, basedOn: result.isBitSet(5) )
-        flags.set(.f3, basedOn: result.isBitSet(3) )
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
 
         // if x changed polarity then subtract caused an overflow
         if overflowCheck {
@@ -458,14 +458,14 @@ public struct Z80 {
     mutating func CP(_ x: UInt8) {
         _ = SUB8(a, x)
         
-        flags.set(.f5, basedOn: x.isBitSet(5) )
-        flags.set(.f3, basedOn: x.isBitSet(3) )
+        flags.set(.f5, basedOn: x.isBitSet(5))
+        flags.set(.f3, basedOn: x.isBitSet(3))
     }
 
     /// Decimal Adjust Accumulator
     mutating func DAA() {
         // algorithm from http://worldofspectrum.org/faq/reference/z80reference.htm
-        var correctionFactor : UInt8 = 0
+        var correctionFactor: UInt8 = 0
         let originalA = a
 
         if (a > 0x99) || flags.contains(.c) {
@@ -486,8 +486,8 @@ public struct Z80 {
         }
 
         flags.set(.h, basedOn: ((originalA & 0x10) ^ (a & 0x10)) == 0x10)
-        flags.set(.f5, basedOn: a.isBitSet(5) )
-        flags.set(.f3, basedOn: a.isBitSet(3) )
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
 
         flags.set(.s, basedOn: a.isSignedBitSet())
         flags.setZeroFlag(basedOn: a)
@@ -495,25 +495,218 @@ public struct Z80 {
 
         tStates += 4
     }
+    
+    // Flow operations
+    /// Call
+    mutating func CALL() {
+        let callAddr = getNextWord()
 
-    //
-    //
-    //    func AND(a: UInt8, reg: UInt8) -> int {
-    //      a &= reg;
-    //      fS = isSign8(a);
-    //      fZ = isZero(a);
-    //      fH = true;
-    //      f5 = isBitSet(a, 5);
-    //      f3 = isBitSet(a, 3);
-    //      fPV = isParity(a);
-    //      fN = false;
-    //      fC = false;
-    //
-    //      tStates += 4;
-    //
-    //      return a;
-    //    }
-    //
+        PUSH(pc)
+
+        pc = callAddr
+
+        tStates += 17
+    }
+
+    /// Jump Relative
+    mutating func JR(_ jump: UInt8) {
+        // jump is treated as signed byte from -128 to 127
+        let vector = jump.twosComplement
+        pc = UInt16((Int(pc) + Int(vector)) % 0xFFFF)
+
+        tStates += 12
+    }
+
+    /// Decrement and Jump if Not Zero
+    mutating func DJNZ(_ jump: UInt8) {
+        b &-= 1
+        if b != 0 {
+            JR(jump)
+            tStates += 1 // JR is 12 tStates
+        } else {
+            tStates += 8
+        }
+    }
+
+    /// Restart
+    mutating func RST(_ addr: UInt8) {
+        PUSH(pc)
+        pc = UInt16(addr)
+        tStates += 11
+    }
+
+    /// Return from Non-Maskable Interrupt
+    mutating func RETN() {
+        // When an NMI is accepted, IFF1 is reset to prevent any other interrupts
+        // occurring during the same period. This return ensures that the value is
+        // restored from IFF2.
+        pc = POP()
+        iff1 = iff2
+    }
+
+    // Stack operations
+    mutating func PUSH(_ val: UInt16) {
+        sp &-= 1
+        memory.writeByte(sp, val.highByte)
+        sp &-= 1
+        memory.writeByte(sp, val.lowByte)
+    }
+
+    mutating func POP() -> UInt16 {
+        let lowByte = memory.readByte(sp)
+        sp &+= 1
+        let highByte = memory.readByte(sp)
+        sp &+= 1
+        return UInt16.createWord(highByte, lowByte)
+    }
+
+    mutating func EX_AFAFPrime() {
+        swap(&a, &a_)
+        swap(&f, &f_)
+
+        tStates += 4
+    }
+    
+    // Logic operations
+
+    /// Compare and Decrement
+    mutating func CPD() {
+        let byteAtHL = memory.readByte(hl)
+        flags.set(.h, basedOn: (a & 0x0F) < (byteAtHL & 0x0F))
+        flags.set(.s, basedOn: (a &- byteAtHL).isSignedBitSet())
+        flags.set(.z, basedOn: a == byteAtHL)
+        flags.set(.f5, basedOn: ((a &- byteAtHL &- (flags.contains(.h) ? 1 : 0)) & 0xFF).isBitSet(1))
+        flags.set(.f3, basedOn: ((a &- byteAtHL &- (flags.contains(.h) ? 1 : 0)) & 0xFF).isBitSet(3))
+        flags.insert(.n)
+        flags.set(.pv, basedOn: bc &- 1 != 0)
+        hl &-= 1
+        bc &-= 1
+
+        tStates += 16
+    }
+
+    /// Compare and Decrement Repeated
+    mutating func CPDR() {
+        let byteAtHL = memory.readByte(hl)
+        flags.set(.h, basedOn: (a & 0x0F) < (byteAtHL & 0x0F))
+        flags.set(.s, basedOn: (a &- byteAtHL).isSignedBitSet())
+        flags.set(.z, basedOn: a == byteAtHL)
+        flags.set(.f5, basedOn: ((a &- byteAtHL &- (flags.contains(.h) ? 1 : 0)) & 0xFF).isBitSet(1))
+        flags.set(.f3, basedOn: ((a &- byteAtHL &- (flags.contains(.h) ? 1 : 0)) & 0xFF).isBitSet(3))
+        flags.insert(.n)
+        flags.set(.pv, basedOn: bc &- 1 != 0)
+        
+        hl &-= 1
+        bc &-= 1
+
+        if bc != 0, a != byteAtHL {
+            pc &-= 2
+            tStates += 21
+        } else {
+            tStates += 16
+        }
+    }
+
+    mutating func CPI() {
+        let byteAtHL = memory.readByte(hl)
+        flags.set(.h, basedOn: (a & 0x0F) < (byteAtHL & 0x0F))
+        flags.set(.s, basedOn: (a &- byteAtHL).isSignedBitSet())
+        flags.set(.z, basedOn: a == byteAtHL)
+        flags.set(.f5, basedOn: ((a &- byteAtHL &- (flags.contains(.h) ? 1 : 0)) & 0xFF).isBitSet(1))
+        flags.set(.f3, basedOn: ((a &- byteAtHL &- (flags.contains(.h) ? 1 : 0)) & 0xFF).isBitSet(3))
+        flags.insert(.n)
+        flags.set(.pv, basedOn: bc &- 1 != 0)
+
+        hl &+= 1
+        bc &-= 1
+
+        tStates += 16
+    }
+
+    mutating func CPIR() {
+        let byteAtHL = memory.readByte(hl)
+        flags.set(.h, basedOn: (a & 0x0F) < (byteAtHL & 0x0F))
+        flags.set(.s, basedOn: (a &- byteAtHL).isSignedBitSet())
+        flags.set(.z, basedOn: a == byteAtHL)
+        flags.set(.f5, basedOn: ((a &- byteAtHL &- (flags.contains(.h) ? 1 : 0)) & 0xFF).isBitSet(1))
+        flags.set(.f3, basedOn: ((a &- byteAtHL &- (flags.contains(.h) ? 1 : 0)) & 0xFF).isBitSet(3))
+        flags.insert(.n)
+        flags.set(.pv, basedOn: bc &- 1 != 0)
+
+        hl &+= 1
+        bc &-= 1
+
+        if bc != 0, a != byteAtHL {
+            pc &-= 2
+            tStates += 21
+        } else {
+            tStates += 16
+        }
+    }
+
+    mutating func OR(_ registerValue: UInt8) -> UInt8 {
+        let result = a | registerValue
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+        flags.set(.pv, basedOn: result.isParity())
+        flags.remove([.n, .c])
+
+        tStates += 4
+
+        return result
+    }
+
+    mutating func XOR(_ registerValue: UInt8) -> UInt8 {
+        let result = a ^ registerValue
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+        flags.set(.pv, basedOn: result.isParity())
+        flags.remove([.n, .h, .c])
+
+        tStates += 4
+
+        return result
+    }
+
+    // TODO: Mutate a register directly for AND/OR/XOR/NEG
+    mutating func AND(_ registerValue: UInt8) -> UInt8 {
+        let result = a & registerValue
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.insert(.h)
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+        flags.set(.pv, basedOn: result.isParity())
+        flags.remove([.n, .c])
+
+        tStates += 4
+
+        return result
+    }
+
+    mutating func NEG() {
+        // TODO: Make twos complement return UInt8
+        // returns two's complement of a
+        flags.set(.pv, basedOn: a == 0x80)
+        flags.set(.c, basedOn: a != 0x00)
+        
+        a = ~a
+        a &+= 1
+        
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
+        flags.set(.s, basedOn: a.isSignedBitSet())
+        flags.setZeroFlag(basedOn: a)
+        flags.set(.h, basedOn: a & 0x0F != 0)
+        flags.insert(.n)
+
+        tStates += 8
+    }
+
     mutating func executeNextInstruction() -> Bool {
         halt = false
         let opCode = getNextByte()
@@ -540,13 +733,13 @@ public struct Z80 {
             bc = (bc &+ 1)
             tStates += 6
         
-                // INC B
-                case 0x04:
-                  b = INC(b);
+        // INC B
+        case 0x04:
+            b = INC(b)
         
-                // DEC B
-                case 0x05:
-                  b = DEC(b);
+        // DEC B
+        case 0x05:
+            b = DEC(b)
         
         // LD B, *
         case 0x06:
@@ -557,13 +750,13 @@ public struct Z80 {
         //        case 0x07:
         //          RLCA();
         //
-        //        // EX AF, AF'
-        //        case 0x08:
-        //          EX_AFAFPrime();
-        //
-                // ADD HL, BC
-                case 0x09:
-                  hl = ADD16(hl, bc);
+        // EX AF, AF'
+        case 0x08:
+            EX_AFAFPrime()
+        
+        // ADD HL, BC
+        case 0x09:
+            hl = ADD16(hl, bc)
         
         // LD A, (BC)
         case 0x0A:
@@ -575,13 +768,13 @@ public struct Z80 {
             bc &-= 1
             tStates += 6
         
-                // INC C
-                case 0x0C:
-                  c = INC(c);
+        // INC C
+        case 0x0C:
+            c = INC(c)
         
-                // DEC C
-                case 0x0D:
-                  c = DEC(c);
+        // DEC C
+        case 0x0D:
+            c = DEC(c)
         
         // LD C, *
         case 0x0E:
@@ -611,13 +804,13 @@ public struct Z80 {
             de &+= 1
             tStates += 6
         
-                // INC D
-                case 0x14:
-                  d = INC(d);
+        // INC D
+        case 0x14:
+            d = INC(d)
         
-                // DEC D
-                case 0x15:
-                  d = DEC(d);
+        // DEC D
+        case 0x15:
+            d = DEC(d)
         
         // LD D, *
         case 0x16:
@@ -627,14 +820,14 @@ public struct Z80 {
         //        // RLA
         //        case 0x17:
         //          RLA();
-        //
-        //        // JR *
-        //        case 0x18:
-        //          JR(getNextByte());
         
-                // ADD HL, DE
-                case 0x19:
-                  hl = ADD16(hl, de);
+        // JR *
+        case 0x18:
+            JR(getNextByte())
+        
+        // ADD HL, DE
+        case 0x19:
+            hl = ADD16(hl, de)
         
         // LD A, (DE)
         case 0x1A:
@@ -646,13 +839,13 @@ public struct Z80 {
             de &-= 1
             tStates += 6
         
-                // INC E
-                case 0x1C:
-                  e = INC(e);
+        // INC E
+        case 0x1C:
+            e = INC(e)
         
-                // DEC E
-                case 0x1D:
-                  e = DEC(e);
+        // DEC E
+        case 0x1D:
+            e = DEC(e)
         
         // LD E, *
         case 0x1E:
@@ -662,15 +855,15 @@ public struct Z80 {
         //        // RRA
         //        case 0x1F:
         //          RRA();
-        //
-        //        // JR NZ, *
-        //        case 0x20:
-        //          if (!fZ) {
-        //            JR(getNextByte());
-        //          } else {
-        //            pc = (pc + 1) % 0x10000;
-        //            tStates += 7;
-        //          }
+        
+        // JR NZ, *
+        case 0x20:
+            if !flags.contains(.z) {
+                JR(getNextByte())
+            } else {
+                pc &+= 1
+                tStates += 7
+            }
         //
         // LD HL, **
         case 0x21:
@@ -687,35 +880,35 @@ public struct Z80 {
             hl &+= 1
             tStates += 6
             
-                    // INC H
-                    case 0x24:
-                      h = INC(h);
+        // INC H
+        case 0x24:
+            h = INC(h)
             
-                    // DEC H
-                    case 0x25:
-                      h = DEC(h);
+        // DEC H
+        case 0x25:
+            h = DEC(h)
             
         // LD H, *
         case 0x26:
             h = getNextByte()
             tStates += 7
             
-                    // DAA
-                    case 0x27:
-                      DAA();
+        // DAA
+        case 0x27:
+            DAA()
             
-            //        // JR Z, *
-            //        case 0x28:
-            //          if (fZ) {
-            //            JR(getNextByte());
-            //          } else {
-            //            pc = (pc + 1) % 0x10000;
-            //            tStates += 7;
-            //          }
+        // JR Z, *
+        case 0x28:
+            if flags.contains(.z) {
+                JR(getNextByte())
+            } else {
+                pc &+= 1
+                tStates += 7
+            }
             
-                    // ADD HL, HL
-                    case 0x29:
-                      hl = ADD16(hl, hl);
+        // ADD HL, HL
+        case 0x29:
+            hl = ADD16(hl, hl)
             
         // LD HL, (**)
         case 0x2A:
@@ -727,13 +920,13 @@ public struct Z80 {
             hl &-= 1
             tStates += 6
         
-                // INC L
-                case 0x2C:
-                  l = INC(l);
+        // INC L
+        case 0x2C:
+            l = INC(l)
         
-                // DEC L
-                case 0x2D:
-                  l = DEC(l);
+        // DEC L
+        case 0x2D:
+            l = DEC(l)
         
         // LD L, *
         case 0x2E:
@@ -768,15 +961,15 @@ public struct Z80 {
             sp &+= 1
             tStates += 6
         
-                // INC (HL)
-                case 0x34:
-                  memory.writeByte(hl, INC(memory.readByte(hl)));
-                  tStates += 7;
+        // INC (HL)
+        case 0x34:
+            memory.writeByte(hl, INC(memory.readByte(hl)))
+            tStates += 7
         
-                // DEC (HL)
-                case 0x35:
-                  memory.writeByte(hl, DEC(memory.readByte(hl)));
-                  tStates += 7;
+        // DEC (HL)
+        case 0x35:
+            memory.writeByte(hl, DEC(memory.readByte(hl)))
+            tStates += 7
         
         // LD (HL), *
         case 0x36:
@@ -797,27 +990,27 @@ public struct Z80 {
             //            tStates += 7;
             //          }
             
-                    // ADD HL, SP
-                    case 0x39:
-                      hl = ADD16(hl, sp);
+        // ADD HL, SP
+        case 0x39:
+            hl = ADD16(hl, sp)
             
         // LD A, (**)
         case 0x3A:
             a = memory.readByte(getNextWord())
             tStates += 13
         
-                // DEC SP
-                case 0x3B:
+        // DEC SP
+        case 0x3B:
             sp &-= 1
-                  tStates += 6;
+            tStates += 6
         
-                // INC A
-                case 0x3C:
-                  a = INC(a);
+        // INC A
+        case 0x3C:
+            a = INC(a)
         
-                // DEC A
-                case 0x3D:
-                  a = DEC(a);
+        // DEC A
+        case 0x3D:
+            a = DEC(a)
         
         // LD A, *
         case 0x3E:
@@ -1142,430 +1335,430 @@ public struct Z80 {
         case 0x7F:
             tStates += 4
         
-                // ADD A, B
-                case 0x80:
-                  a = ADD8(a, b);
+        // ADD A, B
+        case 0x80:
+            a = ADD8(a, b)
         
-                // ADD A, C
-                case 0x81:
-                  a = ADD8(a, c);
+        // ADD A, C
+        case 0x81:
+            a = ADD8(a, c)
         
-                // ADD A, D
-                case 0x82:
-                  a = ADD8(a, d);
+        // ADD A, D
+        case 0x82:
+            a = ADD8(a, d)
         
-                // ADD A, E
-                case 0x83:
-                  a = ADD8(a, e);
+        // ADD A, E
+        case 0x83:
+            a = ADD8(a, e)
         
-                // ADD A, H
-                case 0x84:
-                  a = ADD8(a, h);
+        // ADD A, H
+        case 0x84:
+            a = ADD8(a, h)
         
-                // ADD A, L
-                case 0x85:
-                  a = ADD8(a, l);
+        // ADD A, L
+        case 0x85:
+            a = ADD8(a, l)
         
-                // ADD A, (HL)
-                case 0x86:
-                  a = ADD8(a, memory.readByte(hl));
-                  tStates += 3;
+        // ADD A, (HL)
+        case 0x86:
+            a = ADD8(a, memory.readByte(hl))
+            tStates += 3
         
-                // ADD A, A
-                case 0x87:
-                  a = ADD8(a, a);
+        // ADD A, A
+        case 0x87:
+            a = ADD8(a, a)
         
-                // ADC A, B
-                case 0x88:
-                  a = ADC8(a, b);
+        // ADC A, B
+        case 0x88:
+            a = ADC8(a, b)
         
-                // ADC A, C
-                case 0x89:
-                  a = ADC8(a, c);
+        // ADC A, C
+        case 0x89:
+            a = ADC8(a, c)
         
-                // ADC A, D
-                case 0x8A:
-                  a = ADC8(a, d);
+        // ADC A, D
+        case 0x8A:
+            a = ADC8(a, d)
         
-                // ADC A, E
-                case 0x8B:
-                  a = ADC8(a, e);
+        // ADC A, E
+        case 0x8B:
+            a = ADC8(a, e)
         
-                // ADC A, H
-                case 0x8C:
-                  a = ADC8(a, h);
+        // ADC A, H
+        case 0x8C:
+            a = ADC8(a, h)
         
-                // ADC A, L
-                case 0x8D:
-                  a = ADC8(a, l);
+        // ADC A, L
+        case 0x8D:
+            a = ADC8(a, l)
         
-                // ADC A, (HL)
-                case 0x8E:
-                  a = ADC8(a, memory.readByte(hl));
-                  tStates += 3;
+        // ADC A, (HL)
+        case 0x8E:
+            a = ADC8(a, memory.readByte(hl))
+            tStates += 3
         
-                // ADC A, A
-                case 0x8F:
-                  a = ADC8(a, a);
+        // ADC A, A
+        case 0x8F:
+            a = ADC8(a, a)
         
-                // SUB B
-                case 0x90:
-                  a = SUB8(a, b);
+        // SUB B
+        case 0x90:
+            a = SUB8(a, b)
         
-                // SUB C
-                case 0x91:
-                  a = SUB8(a, c);
+        // SUB C
+        case 0x91:
+            a = SUB8(a, c)
         
-                // SUB D
-                case 0x92:
-                  a = SUB8(a, d);
+        // SUB D
+        case 0x92:
+            a = SUB8(a, d)
         
-                // SUB E
-                case 0x93:
-                  a = SUB8(a, e);
+        // SUB E
+        case 0x93:
+            a = SUB8(a, e)
         
-                // SUB H
-                case 0x94:
-                  a = SUB8(a, h);
+        // SUB H
+        case 0x94:
+            a = SUB8(a, h)
         
-                // SUB L
-                case 0x95:
-                  a = SUB8(a, l);
+        // SUB L
+        case 0x95:
+            a = SUB8(a, l)
         
-                // SUB (HL)
-                case 0x96:
-                  a = SUB8(a, memory.readByte(hl));
-                  tStates += 3;
+        // SUB (HL)
+        case 0x96:
+            a = SUB8(a, memory.readByte(hl))
+            tStates += 3
         
-                // SUB A
-                case 0x97:
-                  a = SUB8(a, a);
+        // SUB A
+        case 0x97:
+            a = SUB8(a, a)
         
-                // SBC A, B
-                case 0x98:
-                  a = SBC8(a, b);
+        // SBC A, B
+        case 0x98:
+            a = SBC8(a, b)
         
-                // SBC A, C
-                case 0x99:
-                  a = SBC8(a, c);
+        // SBC A, C
+        case 0x99:
+            a = SBC8(a, c)
         
-                // SBC A, D
-                case 0x9A:
-                  a = SBC8(a, d);
+        // SBC A, D
+        case 0x9A:
+            a = SBC8(a, d)
         
-                // SBC A, E
-                case 0x9B:
-                  a = SBC8(a, e);
+        // SBC A, E
+        case 0x9B:
+            a = SBC8(a, e)
         
-                // SBC A, H
-                case 0x9C:
-                  a = SBC8(a, h);
+        // SBC A, H
+        case 0x9C:
+            a = SBC8(a, h)
         
-                // SBC A, L
-                case 0x9D:
-                  a = SBC8(a, l);
+        // SBC A, L
+        case 0x9D:
+            a = SBC8(a, l)
         
-                // SBC A, (HL)
-                case 0x9E:
-                  a = SBC8(a, memory.readByte(hl));
-                  tStates += 3;
+        // SBC A, (HL)
+        case 0x9E:
+            a = SBC8(a, memory.readByte(hl))
+            tStates += 3
         
-                // SBC A, A
-                case 0x9F:
-                  a = SBC8(a, a);
+        // SBC A, A
+        case 0x9F:
+            a = SBC8(a, a)
         
-        //        // AND B
-        //        case 0xA0:
-        //          a = AND(a, b);
-        //
-        //        // AND C
-        //        case 0xA1:
-        //          a = AND(a, c);
-        //
-        //        // AND D
-        //        case 0xA2:
-        //          a = AND(a, d);
-        //
-        //        // AND E
-        //        case 0xA3:
-        //          a = AND(a, e);
-        //
-        //        // AND H
-        //        case 0xA4:
-        //          a = AND(a, h);
-        //
-        //        // AND L
-        //        case 0xA5:
-        //          a = AND(a, l);
-        //
-        //        // AND (HL)
-        //        case 0xA6:
-        //          a = AND(a, memory.readByte(hl));
-        //          tStates += 3;
-        //
-        //        // AND A
-        //        case 0xA7:
-        //          a = AND(a, a);
-        //
-        //        // XOR B
-        //        case 0xA8:
-        //          a = XOR(a, b);
-        //
-        //        // XOR C
-        //        case 0xA9:
-        //          a = XOR(a, c);
-        //
-        //        // XOR D
-        //        case 0xAA:
-        //          a = XOR(a, d);
-        //
-        //        // XOR E
-        //        case 0xAB:
-        //          a = XOR(a, e);
-        //
-        //        // XOR H
-        //        case 0xAC:
-        //          a = XOR(a, h);
-        //
-        //        // XOR L
-        //        case 0xAD:
-        //          a = XOR(a, l);
-        //
-        //        // XOR (HL)
-        //        case 0xAE:
-        //          a = XOR(a, memory.readByte(hl));
-        //          tStates += 3;
-        //
-        //        // XOR A
-        //        case 0xAF:
-        //          a = XOR(a, a);
-        //
-        //        // OR B
-        //        case 0xB0:
-        //          a = OR(a, b);
-        //
-        //        // OR C
-        //        case 0xB1:
-        //          a = OR(a, c);
-        //
-        //        // OR D
-        //        case 0xB2:
-        //          a = OR(a, d);
-        //
-        //        // OR E
-        //        case 0xB3:
-        //          a = OR(a, e);
-        //
-        //        // OR H
-        //        case 0xB4:
-        //          a = OR(a, h);
-        //
-        //        // OR L
-        //        case 0xB5:
-        //          a = OR(a, l);
-        //
-        //        // OR (HL)
-        //        case 0xB6:
-        //          a = OR(a, memory.readByte(hl));
-        //          tStates += 3;
-        //
-        //        // OR A
-        //        case 0xB7:
-        //          a = OR(a, a);
-        //
-        //        // CP B
-        //        case 0xB8:
-        //          CP(b);
-        //
-        //        // CP C
-        //        case 0xB9:
-        //          CP(c);
-        //
-        //        // CP D
-        //        case 0xBA:
-        //          CP(d);
-        //
-        //        // CP E
-        //        case 0xBB:
-        //          CP(e);
-        //
-        //        // CP H
-        //        case 0xBC:
-        //          CP(h);
-        //
-        //        // CP L
-        //        case 0xBD:
-        //          CP(l);
-        //
-        //        // CP (HL)
-        //        case 0xBE:
-        //          CP(memory.readByte(hl));
-        //          tStates += 3;
-        //
-        //        // CP A
-        //        case 0xBF:
-        //          CP(a);
-        //
-        //        // RET NZ
-        //        case 0xC0:
-        //          if (!fZ) {
-        //            pc = POP();
-        //            tStates += 11;
-        //          } else {
-        //            tStates += 5;
-        //          }
-        //
-        //        // POP BC
-        //        case 0xC1:
-        //          bc = POP();
-        //          tStates += 10;
-        //
-        //        // JP NZ, **
-        //        case 0xC2:
-        //          if (!fZ) {
-        //            pc = getNextWord();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //          }
-        //          tStates += 10;
+        // AND B
+        case 0xA0:
+            a = AND(b)
         
-                // JP **
-                case 0xC3:
-                  pc = getNextWord();
-                  tStates += 10;
+        // AND C
+        case 0xA1:
+            a = AND(c)
         
-        //        // CALL NZ, **
-        //        case 0xC4:
-        //          if (!fZ) {
-        //            CALL();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //            tStates += 10;
-        //          }
-        //
-        //        // PUSH BC
-        //        case 0xC5:
-        //          PUSH(bc);
-        //          tStates += 11;
+        // AND D
+        case 0xA2:
+            a = AND(d)
         
-                // ADD A, *
-                case 0xC6:
-                  a = ADD8(a, getNextByte());
-                  tStates += 3;
+        // AND E
+        case 0xA3:
+            a = AND(e)
         
-        //        // RST 00h
-        //        case 0xC7:
-        //          RST(0x00);
-        //
-        //        // RET Z
-        //        case 0xC8:
-        //          if (fZ) {
-        //            pc = POP();
-        //            tStates += 11;
-        //          } else {
-        //            tStates += 5;
-        //          }
-        //
-        //        // RET
-        //        case 0xC9:
-        //          pc = POP();
-        //          tStates += 10;
-        //
-        //        // JP Z, **
-        //        case 0xCA:
-        //          if (fZ) {
-        //            pc = getNextWord();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //          }
-        //          tStates += 10;
+        // AND H
+        case 0xA4:
+            a = AND(h)
         
-                // BITWISE INSTRUCTIONS
-                case 0xCB:
-                  return DecodeCBOpcode();
-        //
-        //        // CALL Z, **
-        //        case 0xCC:
-        //          if (fZ) {
-        //            CALL();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //            tStates += 10;
-        //          }
-        //
-        //        // CALL **
-        //        case 0xCD:
-        //          CALL();
+        // AND L
+        case 0xA5:
+            a = AND(l)
         
-                // ADC A, *
-                case 0xCE:
-                  a = ADC8(a, getNextByte());
-                  tStates += 3;
+        // AND (HL)
+        case 0xA6:
+            a = AND(memory.readByte(hl))
+            tStates += 3
         
-        //        // RST 08h
-        //        case 0xCF:
-        //          RST(0x08);
-        //
-        //        // RET NC
-        //        case 0xD0:
-        //          if (!fC) {
-        //            pc = POP();
-        //            tStates += 11;
-        //          } else {
-        //            tStates += 5;
-        //          }
-        //
-        //        // POP DE
-        //        case 0xD1:
-        //          de = POP();
-        //          tStates += 10;
-        //
-        //        // JP NC, **
-        //        case 0xD2:
-        //          if (!fC) {
-        //            pc = getNextWord();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //          }
-        //          tStates += 10;
+        // AND A
+        case 0xA7:
+            a = AND(a)
+        
+        // XOR B
+        case 0xA8:
+            a = XOR(b)
+        
+        // XOR C
+        case 0xA9:
+            a = XOR(c)
+        
+        // XOR D
+        case 0xAA:
+            a = XOR(d)
+        
+        // XOR E
+        case 0xAB:
+            a = XOR(e)
+        
+        // XOR H
+        case 0xAC:
+            a = XOR(h)
+        
+        // XOR L
+        case 0xAD:
+            a = XOR(l)
+        
+        // XOR (HL)
+        case 0xAE:
+            a = XOR(memory.readByte(hl))
+            tStates += 3
+        
+        // XOR A
+        case 0xAF:
+            a = XOR(a)
+        
+        // OR B
+        case 0xB0:
+            a = OR(b)
+        
+        // OR C
+        case 0xB1:
+            a = OR(c)
+        
+        // OR D
+        case 0xB2:
+            a = OR(d)
+        
+        // OR E
+        case 0xB3:
+            a = OR(e)
+        
+        // OR H
+        case 0xB4:
+            a = OR(h)
+        
+        // OR L
+        case 0xB5:
+            a = OR(l)
+        
+        // OR (HL)
+        case 0xB6:
+            a = OR(memory.readByte(hl))
+            tStates += 3
+        
+        // OR A
+        case 0xB7:
+            a = OR(a)
+        
+        // CP B
+        case 0xB8:
+            CP(b)
+        
+        // CP C
+        case 0xB9:
+            CP(c)
+        
+        // CP D
+        case 0xBA:
+            CP(d)
+        
+        // CP E
+        case 0xBB:
+            CP(e)
+        
+        // CP H
+        case 0xBC:
+            CP(h)
+        
+        // CP L
+        case 0xBD:
+            CP(l)
+        
+        // CP (HL)
+        case 0xBE:
+            CP(memory.readByte(hl))
+            tStates += 3
+        
+        // CP A
+        case 0xBF:
+            CP(a)
+        
+        // RET NZ
+        case 0xC0:
+            if !flags.contains(.z) {
+                pc = POP()
+                tStates += 11
+            } else {
+                tStates += 5
+            }
+        
+        // POP BC
+        case 0xC1:
+            bc = POP()
+            tStates += 10
+        
+        // JP NZ, **
+        case 0xC2:
+            if !flags.contains(.z) {
+                pc = getNextWord()
+            } else {
+                pc &+= 2
+            }
+            tStates += 10
+        
+        // JP **
+        case 0xC3:
+            pc = getNextWord()
+            tStates += 10
+        
+        // CALL NZ, **
+        case 0xC4:
+            if !flags.contains(.z) {
+                CALL()
+            } else {
+                pc &+= 2
+                tStates += 10
+            }
+        
+        // PUSH BC
+        case 0xC5:
+            PUSH(bc)
+            tStates += 11
+        
+        // ADD A, *
+        case 0xC6:
+            a = ADD8(a, getNextByte())
+            tStates += 3
+        
+        // RST 00h
+        case 0xC7:
+            RST(0x00)
+        
+        // RET Z
+        case 0xC8:
+            if flags.contains(.z) {
+                pc = POP()
+                tStates += 11
+            } else {
+                tStates += 5
+            }
+        
+        // RET
+        case 0xC9:
+            pc = POP()
+            tStates += 10
+        
+        // JP Z, **
+        case 0xCA:
+            if flags.contains(.z) {
+                pc = getNextWord()
+            } else {
+                pc &+= 2
+            }
+            tStates += 10
+        
+        // BITWISE INSTRUCTIONS
+        case 0xCB:
+            return DecodeCBOpcode()
+        
+        // CALL Z, **
+        case 0xCC:
+            if flags.contains(.z) {
+                CALL()
+            } else {
+                pc &+= 2
+                tStates += 10
+            }
+        
+        // CALL **
+        case 0xCD:
+            CALL()
+        
+        // ADC A, *
+        case 0xCE:
+            a = ADC8(a, getNextByte())
+            tStates += 3
+        
+        // RST 08h
+        case 0xCF:
+            RST(0x08)
+        
+        // RET NC
+        case 0xD0:
+            if !flags.contains(.c) {
+                pc = POP()
+                tStates += 11
+            } else {
+                tStates += 5
+            }
+        
+        // POP DE
+        case 0xD1:
+            de = POP()
+            tStates += 10
+        
+        // JP NC, **
+        case 0xD2:
+            if !flags.contains(.c) {
+                pc = getNextWord()
+            } else {
+                pc &+= 2
+            }
+            tStates += 10
         //
         //        // OUT (*), A
         //        case 0xD3:
         //          OUTA(getNextByte(), a);
         //          tStates += 11;
-        //
-        //        // CALL NC, **
-        //        case 0xD4:
-        //          if (!fC) {
-        //            CALL();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //            tStates += 10;
-        //          }
-        //
-        //        // PUSH DE
-        //        case 0xD5:
-        //          PUSH(de);
-        //          tStates += 11;
         
-                // SUB *
-                case 0xD6:
-                  a = SUB8(a, getNextByte());
-                  tStates += 3;
+        // CALL NC, **
+        case 0xD4:
+            if !flags.contains(.c) {
+                CALL()
+            } else {
+                pc &+= 2
+                tStates += 10
+            }
         
-        //        // RST 10h
-        //        case 0xD7:
-        //          RST(0x10);
-        //
-        //        // RET C
-        //        case 0xD8:
-        //          if (fC) {
-        //            pc = POP();
-        //            tStates += 11;
-        //          } else {
-        //            tStates += 5;
-        //          }
-        //
+        // PUSH DE
+        case 0xD5:
+            PUSH(de)
+            tStates += 11
+        
+        // SUB *
+        case 0xD6:
+            a = SUB8(a, getNextByte())
+            tStates += 3
+        
+        // RST 10h
+        case 0xD7:
+            RST(0x10)
+        
+        // RET C
+        case 0xD8:
+            if flags.contains(.c) {
+                pc = POP()
+                tStates += 11
+            } else {
+                tStates += 5
+            }
+        
         // EXX
         case 0xD9:
             swap(&b, &b_)
@@ -1576,42 +1769,42 @@ public struct Z80 {
             swap(&l, &l_)
             tStates += 4
         
-                // JP C, **
-                case 0xDA:
-            if (flags.contains(.c)) {
-                    pc = getNextWord();
-                  } else {
-                    pc &+= 2
-                  }
-                  tStates += 10;
+        // JP C, **
+        case 0xDA:
+            if flags.contains(.c) {
+                pc = getNextWord()
+            } else {
+                pc &+= 2
+            }
+            tStates += 10
         
         //        // IN A, (*)
         //        case 0xDB:
         //          INA(getNextByte());
         //          tStates += 11;
-        //
-        //        // CALL C, **
-        //        case 0xDC:
-        //          if (fC) {
-        //            CALL();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //            tStates += 10;
-        //          }
         
-                // IX OPERATIONS
-                case 0xDD:
-                  return DecodeDDOpcode();
+        // CALL C, **
+        case 0xDC:
+            if flags.contains(.c) {
+                CALL()
+            } else {
+                pc &+= 2
+                tStates += 10
+            }
         
-                // SBC A, *
-                case 0xDE:
-                  a = SBC8(a, getNextByte());
-                  tStates += 3;
+        // IX OPERATIONS
+        case 0xDD:
+            return DecodeDDOpcode()
         
-        //        // RST 18h
-        //        case 0xDF:
-        //          RST(0x18);
-        //
+        // SBC A, *
+        case 0xDE:
+            a = SBC8(a, getNextByte())
+            tStates += 3
+        
+        // RST 18h
+        case 0xDF:
+            RST(0x18)
+        
         //        // RET PO
         //        case 0xE0:
         //          if (!fPV) {
@@ -1620,61 +1813,60 @@ public struct Z80 {
         //          } else {
         //            tStates += 5;
         //          }
-        //
-        //        // POP HL
-        //        case 0xE1:
-        //          hl = POP();
-        //          tStates += 10;
         
-                // JP PO, **
-                case 0xE2:
-            if (!flags.contains(.pv)) {
-                    pc = getNextWord();
-                  } else {
-                    pc &+= 2
-                  }
-                  tStates += 10;
+        // POP HL
+        case 0xE1:
+            hl = POP()
+            tStates += 10
         
-                // EX (SP), HL
-                case 0xE3:
-                  let temp = hl;
-                  hl = memory.readWord(sp);
-                  memory.writeWord(sp, temp);
-                  tStates += 19;
+        // JP PO, **
+        case 0xE2:
+            if !flags.contains(.pv) {
+                pc = getNextWord()
+            } else {
+                pc &+= 2
+            }
+            tStates += 10
         
-        //        // CALL PO, **
-        //        case 0xE4:
-        //          if (!fPV) {
-        //            CALL();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //            tStates += 10;
-        //          }
-        //
-        //        // PUSH HL
-        //        case 0xE5:
-        //          PUSH(hl);
-        //          tStates += 11;
-//
-//                // AND *
-//                case 0xE6:
-//                  a = AND(a, getNextByte());
-//                  tStates += 3;
-//
-        //        // RST 20h
-        //        case 0xE7:
-        //          RST(0x20);
-        //
-        //        // RET PE
-        //        case 0xE8:
-        //          if (fPV) {
-        //            pc = POP();
-        //            tStates += 11;
-        //          } else {
-        //            tStates += 5;
-        //          }
-        //
-            
+        // EX (SP), HL
+        case 0xE3:
+            let temp = hl
+            hl = memory.readWord(sp)
+            memory.writeWord(sp, temp)
+            tStates += 19
+        
+        // CALL PO, **
+        case 0xE4:
+            if !flags.contains(.pv) {
+                CALL()
+            } else {
+                pc &+= 2
+                tStates += 10
+            }
+        
+        // PUSH HL
+        case 0xE5:
+            PUSH(hl)
+            tStates += 11
+
+        // AND *
+        case 0xE6:
+            a = AND(getNextByte())
+            tStates += 3
+
+        // RST 20h
+        case 0xE7:
+            RST(0x20)
+        
+        // RET PE
+        case 0xE8:
+            if flags.contains(.pv) {
+                pc = POP()
+                tStates += 11
+            } else {
+                tStates += 5
+            }
+        
         // JP (HL)
         // Note that the brackets in the instruction are an eccentricity, the result
         // should be hl rather than the contents of addr(hl)
@@ -1696,43 +1888,43 @@ public struct Z80 {
             swap(&d, &h)
             swap(&e, &l)
             tStates += 4
-        //
-        //        // CALL PE, **
-        //        case 0xEC:
-        //          if (fPV) {
-        //            CALL();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //            tStates += 10;
-        //          }
         
-                // EXTD INSTRUCTIONS
-                case 0xED:
-                  return DecodeEDOpcode();
+        // CALL PE, **
+        case 0xEC:
+            if flags.contains(.pv) {
+                CALL()
+            } else {
+                pc &+= 2
+                tStates += 10
+            }
         
-        //        // XOR *
-        //        case 0xEE:
-        //          a = XOR(a, getNextByte());
-        //          tStates += 3;
-        //
-        //        // RST 28h
-        //        case 0xEF:
-        //          RST(0x28);
-        //
-        //        // RET P
-        //        case 0xF0:
-        //          if (!fS) {
-        //            pc = POP();
-        //            tStates += 11;
-        //          } else {
-        //            tStates += 5;
-        //          }
-        //
-        //        // POP AF
-        //        case 0xF1:
-        //          af = POP();
-        //          tStates += 10;
-        //
+        // EXTD INSTRUCTIONS
+        case 0xED:
+            return DecodeEDOpcode()
+        
+        // XOR *
+        case 0xEE:
+            a = XOR(getNextByte())
+            tStates += 3
+        
+        // RST 28h
+        case 0xEF:
+            RST(0x28)
+        
+        // RET P
+        case 0xF0:
+            if !flags.contains(.s) {
+                pc = POP()
+                tStates += 11
+            } else {
+                tStates += 5
+            }
+        
+        // POP AF
+        case 0xF1:
+            af = POP()
+            tStates += 10
+        
         // JP P, **
         case 0xF2:
             if !flags.contains(.s) {
@@ -1748,38 +1940,38 @@ public struct Z80 {
             iff2 = false
             tStates += 4
             
-        //        // CALL P, **
-        //        case 0xF4:
-        //          if (!fS) {
-        //            CALL();
-        //          } else {
-        //            pc = (pc + 2) % 0x10000;
-        //            tStates += 10;
-        //          }
-        //
-        //        // PUSH AF
-        //        case 0xF5:
-        //          PUSH(af);
-        //          tStates += 11;
-        //
-        //        // OR *
-        //        case 0xF6:
-        //          a = OR(a, getNextByte());
-        //          tStates += 3;
-        //
-        //        // RST 30h
-        //        case 0xF7:
-        //          RST(0x30);
-        //
-        //        // RET M
-        //        case 0xF8:
-        //          if (fS) {
-        //            pc = POP();
-        //            tStates += 11;
-        //          } else {
-        //            tStates += 5;
-        //          }
-        //
+        // CALL P, **
+        case 0xF4:
+            if !flags.contains(.s) {
+                CALL()
+            } else {
+                pc &+= 2
+                tStates += 10
+            }
+        
+        // PUSH AF
+        case 0xF5:
+            PUSH(af)
+            tStates += 11
+        
+        // OR *
+        case 0xF6:
+            a = OR(getNextByte())
+            tStates += 3
+        
+        // RST 30h
+        case 0xF7:
+            RST(0x30)
+        
+        // RET M
+        case 0xF8:
+            if flags.contains(.s) {
+                pc = POP()
+                tStates += 11
+            } else {
+                tStates += 5
+            }
+        
         // LD SP, HL
         case 0xF9:
             sp = hl
@@ -1800,28 +1992,27 @@ public struct Z80 {
             iff2 = true
             tStates += 4
             
-            //        // CALL M, **
-            //        case 0xFC:
-            //          if (fS) {
-            //            CALL();
-            //          } else {
-            //            pc = (pc + 2) % 0x10000;
-            //            tStates += 10;
-            //          }
+        // CALL M, **
+        case 0xFC:
+            if flags.contains(.s) {
+                CALL()
+            } else {
+                pc &+= 2
+                tStates += 10
+            }
             
-                    // IY INSTRUCTIONS
-                    case 0xFD:
-                      return DecodeFDOpcode();
+        // IY INSTRUCTIONS
+        case 0xFD:
+            return DecodeFDOpcode()
             
-            //        // CP *
-            //        case 0xFE:
-            //          CP(getNextByte());
-            //          tStates += 3;
-            //
-            //        // RST 38h
-            //        case 0xFF:
-            //          RST(0x38);
-            //      }
+        // CP *
+        case 0xFE:
+            CP(getNextByte())
+            tStates += 3
+            
+        // RST 38h
+        case 0xFF:
+            RST(0x38)
 
         default:
             // Undocumented or unimplemented instruction
@@ -1834,5 +2025,4 @@ public struct Z80 {
     func DecodeDDOpcode() -> Bool { false }
     func DecodeEDOpcode() -> Bool { false }
     func DecodeFDOpcode() -> Bool { false }
-
 }
