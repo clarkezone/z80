@@ -706,6 +706,170 @@ public struct Z80 {
 
         tStates += 8
     }
+    
+    /// Complement
+    mutating func CPL() {
+        a = ~a
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
+        flags.insert([.h, .n])
+
+        tStates += 4
+    }
+
+    /// Set Carry Flag
+    mutating func SCF() {
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
+        flags.remove([.h, .n])
+        flags.insert(.c)
+    }
+
+    /// Clear Carry Flag
+    mutating func CCF() {
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
+
+        flags.set(.h, basedOn: flags.contains(.c))
+        flags.remove(.n)
+        flags.set(.c, basedOn: !flags.contains(.c))
+
+        tStates += 4
+    }
+
+    /// Rotate Left Circular
+    mutating func RLC(_ value: UInt8) -> UInt8 {
+        // rotates register r to the left
+        // bit 7 is copied to carry and to bit 0
+        flags.set(.c, basedOn: value.isSignedBitSet())
+        var result = value << 1
+        if flags.contains(.c) { result.setBit(0) }
+
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: result.isParity())
+
+        return result
+    }
+
+    /// Rotate Left Circular Accumulator
+    mutating func RLCA() {
+        // rotates register A to the left
+        // bit 7 is copied to carry and to bit 0
+        flags.set(.c, basedOn: a.isSignedBitSet())
+        a &<<= 1
+        if flags.contains(.c) { a.setBit(0) }
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
+        flags.remove([.h, .n])
+
+        tStates += 4
+    }
+
+    /// Rotate Right Circular
+    mutating func RRC(_ value: UInt8) -> UInt8 {
+        flags.set(.c, basedOn: value.isBitSet(0))
+        var result = value >> 1
+        if flags.contains(.c) { result.setBit(7) }
+
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: result.isParity())
+
+        return result
+    }
+
+    /// Rotate Right Circular Accumulator
+    mutating func RRCA() {
+        flags.set(.c, basedOn: a.isBitSet(0))
+        a >>= 1
+        if flags.contains(.c) { a.setBit(7) }
+
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
+
+        flags.remove([.h, .n])
+
+        tStates += 4
+    }
+
+    /// Rotate Left
+    mutating func RL(_ value: UInt8) -> UInt8 {
+        // rotates register r to the left, through carry.
+        // carry becomes the LSB of the new r
+
+        flags.set(.c, basedOn: value.isSignedBitSet())
+        var result = value << 1
+
+        if flags.contains(.c) { result.setBit(0) }
+
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.remove([.h, .n])
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+        flags.set(.pv, basedOn: result.isParity())
+
+        return result
+    }
+
+    /// Rotate Left Accumulator
+    mutating func RLA() {
+        // rotates register r to the left, through carry.
+        // carry becomes the LSB of the new r
+
+        flags.set(.c, basedOn: a.isSignedBitSet())
+        a <<= 1
+
+        if flags.contains(.c) { a.setBit(0) }
+
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
+
+        flags.remove([.h, .n])
+
+        tStates += 4
+    }
+
+    /// Rotate Right
+    mutating func RR(_ value: UInt8) -> UInt8 {
+        flags.set(.c, basedOn: value.isSignedBitSet())
+        var result = value >> 1
+
+        if flags.contains(.c) { result.setBit(7) }
+
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.remove([.h, .n])
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+        flags.set(.pv, basedOn: result.isParity())
+
+        return result
+    }
+
+    /// Rotate Right Accumulator
+    mutating func RRA() {
+        flags.set(.c, basedOn: a.isSignedBitSet())
+        a >>= 1
+
+        if flags.contains(.c) {
+            a.setBit(7)
+        }
+
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
+
+        flags.remove([.h, .n])
+
+        tStates += 4
+    }
 
     mutating func executeNextInstruction() -> Bool {
         halt = false
@@ -746,10 +910,10 @@ public struct Z80 {
             b = getNextByte()
             tStates += 7
             
-        //        // RLCA
-        //        case 0x07:
-        //          RLCA();
-        //
+        // RLCA
+        case 0x07:
+            RLCA()
+        
         // EX AF, AF'
         case 0x08:
             EX_AFAFPrime()
@@ -780,11 +944,11 @@ public struct Z80 {
         case 0x0E:
             c = getNextByte()
             tStates += 7
-        //
-        //        // RRCA
-        //        case 0x0F:
-        //          RRCA();
-        //
+        
+        // RRCA
+        case 0x0F:
+            RRCA()
+        
         //        // DJNZ *
         //        case 0x10:
         //          DJNZ(getNextByte());
@@ -816,10 +980,10 @@ public struct Z80 {
         case 0x16:
             d = getNextByte()
             tStates += 7
-        //
-        //        // RLA
-        //        case 0x17:
-        //          RLA();
+        
+        // RLA
+        case 0x17:
+            RLA()
         
         // JR *
         case 0x18:
@@ -851,10 +1015,10 @@ public struct Z80 {
         case 0x1E:
             e = getNextByte()
             tStates += 7
-        //
-        //        // RRA
-        //        case 0x1F:
-        //          RRA();
+        
+        // RRA
+        case 0x1F:
+            RRA()
         
         // JR NZ, *
         case 0x20:
@@ -936,16 +1100,16 @@ public struct Z80 {
         //        // CPL
         //        case 0x2F:
         //          CPL();
-        //
-        //        // JR NC, *
-        //        case 0x30:
-        //          if (!fC) {
-        //            JR(getNextByte());
-        //          } else {
-        //            pc = (pc + 1) % 0x10000;
-        //            tStates += 7;
-        //          }
-        //
+        
+        // JR NC, *
+        case 0x30:
+            if !flags.contains(.c) {
+                JR(getNextByte())
+            } else {
+                pc &+= 1
+                tStates += 7
+            }
+        
         // LD SP, **
         case 0x31:
             sp = getNextWord()
@@ -980,15 +1144,15 @@ public struct Z80 {
             //        case 0x37:
             //          SCF();
             //          tStates += 4;
-            //
-            //        // JR C, *
-            //        case 0x38:
-            //          if (fC) {
-            //            JR(getNextByte());
-            //          } else {
-            //            pc = (pc + 1) % 0x10000;
-            //            tStates += 7;
-            //          }
+            
+        // JR C, *
+        case 0x38:
+            if flags.contains(.c) {
+                JR(getNextByte())
+            } else {
+                pc &+= 1
+                tStates += 7
+            }
             
         // ADD HL, SP
         case 0x39:
@@ -1805,14 +1969,14 @@ public struct Z80 {
         case 0xDF:
             RST(0x18)
         
-        //        // RET PO
-        //        case 0xE0:
-        //          if (!fPV) {
-        //            pc = POP();
-        //            tStates += 11;
-        //          } else {
-        //            tStates += 5;
-        //          }
+        // RET PO
+        case 0xE0:
+            if !flags.contains(.pv) {
+                pc = POP()
+                tStates += 11
+            } else {
+                tStates += 5
+            }
         
         // POP HL
         case 0xE1:
