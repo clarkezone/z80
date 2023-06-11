@@ -645,7 +645,7 @@ public struct Z80 {
     }
 
     mutating func OR(_ registerValue: UInt8) -> UInt8 {
-        let result = a | registerValue
+        let result: UInt8 = a | registerValue
         flags.set(.s, basedOn: result.isSignedBitSet())
         flags.setZeroFlag(basedOn: result)
         flags.set(.f5, basedOn: result.isBitSet(5))
@@ -659,7 +659,7 @@ public struct Z80 {
     }
 
     mutating func XOR(_ registerValue: UInt8) -> UInt8 {
-        let result = a ^ registerValue
+        let result: UInt8 = a ^ registerValue
         flags.set(.s, basedOn: result.isSignedBitSet())
         flags.setZeroFlag(basedOn: result)
         flags.set(.f5, basedOn: result.isBitSet(5))
@@ -674,7 +674,7 @@ public struct Z80 {
 
     // TODO: Mutate a register directly for AND/OR/XOR/NEG
     mutating func AND(_ registerValue: UInt8) -> UInt8 {
-        let result = a & registerValue
+        let result: UInt8 = a & registerValue
         flags.set(.s, basedOn: result.isSignedBitSet())
         flags.setZeroFlag(basedOn: result)
         flags.insert(.h)
@@ -742,7 +742,7 @@ public struct Z80 {
         // rotates register r to the left
         // bit 7 is copied to carry and to bit 0
         flags.set(.c, basedOn: value.isSignedBitSet())
-        var result = value << 1
+        var result: UInt8 = value << 1
         if flags.contains(.c) { result.setBit(0) }
 
         flags.set(.f5, basedOn: result.isBitSet(5))
@@ -772,7 +772,7 @@ public struct Z80 {
     /// Rotate Right Circular
     mutating func RRC(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(0))
-        var result = value >> 1
+        var result: UInt8 = value >> 1
         if flags.contains(.c) { result.setBit(7) }
 
         flags.set(.f5, basedOn: result.isBitSet(5))
@@ -805,7 +805,7 @@ public struct Z80 {
         // carry becomes the LSB of the new r
 
         flags.set(.c, basedOn: value.isSignedBitSet())
-        var result = value << 1
+        var result: UInt8 = value << 1
 
         if flags.contains(.c) { result.setBit(0) }
 
@@ -840,7 +840,7 @@ public struct Z80 {
     /// Rotate Right
     mutating func RR(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isSignedBitSet())
-        var result = value >> 1
+        var result: UInt8 = value >> 1
 
         if flags.contains(.c) { result.setBit(7) }
 
@@ -869,6 +869,121 @@ public struct Z80 {
         flags.remove([.h, .n])
 
         tStates += 4
+    }
+
+    /// Shift Left Arithmetic
+    mutating func SLA(_ value: UInt8) -> UInt8 {
+        flags.set(.c, basedOn: value.isBitSet(7))
+        let result: UInt8 = value << 1
+
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: result.isParity())
+
+        return result
+    }
+
+    /// Shift Right Arithmetic
+    mutating func SRA(_ value: UInt8) -> UInt8 {
+        flags.set(.c, basedOn: value.isBitSet(0))
+        var result: UInt8 = value >> 1
+
+        if value.isSignedBitSet() { result.setBit(7) }
+
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: result.isParity())
+
+        return result
+    }
+
+    /// Shift Left Logical
+    mutating func SLL(_ value: UInt8) -> UInt8 {
+        flags.set(.c, basedOn: value.isBitSet(7))
+        var result: UInt8 = value << 1
+        result.setBit(0)
+
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: result.isParity())
+
+        return result
+    }
+
+    /// Shift Right Logical
+    mutating func SRL(_ value: UInt8) -> UInt8 {
+        flags.set(.c, basedOn: value.isBitSet(0))
+        var result: UInt8 = value >> 1
+        result.resetBit(7)
+
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
+
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.setZeroFlag(basedOn: result)
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: result.isParity())
+
+        return result
+    }
+
+    /// Rotate Left BCD Digit
+    mutating func RLD() {
+        // TODO: Overflow condition for this and RRD
+        let byteAtHL = memory.readByte(hl)
+
+        var result: UInt8 = (byteAtHL & 0x0F) << 4
+        result += a & 0x0F
+
+        a = a & 0xF0
+        a += (byteAtHL & 0xF0) >> 4
+
+        memory.writeByte(hl, result)
+
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
+
+        flags.set(.s, basedOn: a.isSignedBitSet())
+        flags.setZeroFlag(basedOn: a)
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: a.isParity())
+
+        tStates += 18
+    }
+
+    /// Rotate Right BCD Digit
+    mutating func RRD() {
+        let byteAtHL = memory.readByte(hl)
+
+        var result: UInt8 = (a & 0x0F) << 4
+        result += (byteAtHL & 0xF0) >> 4
+
+        a = a & 0xF0
+        a += byteAtHL & 0x0F
+
+        memory.writeByte(hl, result)
+
+        flags.set(.f5, basedOn: a.isBitSet(5))
+        flags.set(.f3, basedOn: a.isBitSet(3))
+
+        flags.set(.s, basedOn: a.isSignedBitSet())
+        flags.setZeroFlag(basedOn: a)
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: a.isParity())
+
+        tStates += 18
     }
 
     mutating func executeNextInstruction() -> Bool {
@@ -949,10 +1064,10 @@ public struct Z80 {
         case 0x0F:
             RRCA()
         
-        //        // DJNZ *
-        //        case 0x10:
-        //          DJNZ(getNextByte());
-        //
+                // DJNZ *
+                case 0x10:
+                  DJNZ(getNextByte());
+        
         // LD DE, **
         case 0x11:
             de = getNextWord()
@@ -1028,12 +1143,12 @@ public struct Z80 {
                 pc &+= 1
                 tStates += 7
             }
-        //
+        
         // LD HL, **
         case 0x21:
             hl = getNextWord()
             tStates += 10
-        //
+        
         // LD (**), HL
         case 0x22:
             memory.writeWord(getNextWord(), hl)
@@ -1096,10 +1211,10 @@ public struct Z80 {
         case 0x2E:
             l = getNextByte()
             tStates += 7
-        //
-        //        // CPL
-        //        case 0x2F:
-        //          CPL();
+        
+                // CPL
+                case 0x2F:
+                  CPL();
         
         // JR NC, *
         case 0x30:
@@ -1114,12 +1229,12 @@ public struct Z80 {
         case 0x31:
             sp = getNextWord()
             tStates += 10
-        //
+        
         // LD (**), A
         case 0x32:
             memory.writeByte(getNextWord(), a)
             tStates += 13
-        //
+        
         // INC SP
         case 0x33:
             sp &+= 1
@@ -1139,11 +1254,11 @@ public struct Z80 {
         case 0x36:
             memory.writeByte(hl, getNextByte())
             tStates += 10
-            //
-            //        // SCF
-            //        case 0x37:
-            //          SCF();
-            //          tStates += 4;
+            
+                    // SCF
+                    case 0x37:
+                      SCF();
+                      tStates += 4;
             
         // JR C, *
         case 0x38:
@@ -1180,11 +1295,11 @@ public struct Z80 {
         case 0x3E:
             a = getNextByte()
             tStates += 7
-        //
-        //        // CCF
-        //        case 0x3F:
-        //          CCF();
-        //
+        
+                // CCF
+                case 0x3F:
+                  CCF();
+        
         // LD B, B
         case 0x40:
             tStates += 4
