@@ -1,5 +1,5 @@
 [![Language](https://img.shields.io/badge/language-Swift-orange.svg)](https://swift.org)
-# [![codecov](https://codecov.io/gh/timsneath/z80/branch/main/graph/badge.svg?token=zr4wE5pmay)](https://codecov.io/gh/timsneath/z80)
+<!-- [![codecov](https://codecov.io/gh/timsneath/z80/branch/main/graph/badge.svg?token=zr4wE5pmay)](https://codecov.io/gh/timsneath/z80) -->
 
 A non-functional Zilog Z80 microprocessor emulator written in Swift. Originally
 intended for use with Cambridge, a ZX Spectrum emulator
