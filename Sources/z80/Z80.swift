@@ -29,6 +29,18 @@ let extendedCodes: [UInt8] = [
 
 public struct Z80 {
     var memory: Memory<UInt16>
+    
+    /// Callback for a port read (IN instruction).
+    ///
+    /// This should be used by an emulator to handle peripherals or ULA access,
+    /// including keyboard or storage input.
+    var onPortRead: PortReadCallback? = nil
+
+    /// Callback for a port write (OUT instruction).
+    ///
+    /// This should be used by an emulator to handle peripherals or ULA access,
+    /// such as a printer or storage output.
+    var onPortWrite: PortWriteCallback? = nil
 
     // Core registers
     var a: UInt8 = 0xFF, f: UInt8 = 0xFF
@@ -72,13 +84,18 @@ public struct Z80 {
 
     /// Whether the processor is halted or not
     var halt = false
+    
+    typealias PortReadCallback = (UInt16) -> UInt8
+    typealias PortWriteCallback = (UInt16, UInt8) -> ()
 
-    init() {
-        self.memory = Memory(sizeInBytes: 65536)
-    }
+    func defaultPortReadFunction(_ port: UInt16) -> UInt8 { port.highByte }
+    func defaultPortWriteFunction(_ addr: UInt16, _ value: UInt8) {}
 
-    init(memory: Memory<UInt16>) {
+
+    init(memory: Memory<UInt16> = Memory(sizeInBytes: 65536)) {
         self.memory = memory
+        self.onPortRead = defaultPortReadFunction
+        self.onPortWrite = defaultPortWriteFunction
     }
 
     var af: UInt16 {
@@ -1230,11 +1247,11 @@ public struct Z80 {
     }
 
     func OUT(portNumber: UInt16, value: UInt8) {
-      onPortWrite(portNumber, value);
+      onPortWrite!(portNumber, value);
     }
 
     func OUTA(portNumber: UInt16, value: UInt8) {
-      onPortWrite(portNumber, value);
+      onPortWrite!(portNumber, value);
     }
 
     mutating func INA(_ operandByte: UInt8) {
@@ -1243,12 +1260,12 @@ public struct Z80 {
       // of the Accumulator also appear on the top half (A8 through A15) of the
       // address bus at this time.
         let addressBus = UInt16.formWord(operandByte, a);
-      a = onPortRead(addressBus);
+      a = onPortRead!(addressBus);
     }
 
     /// Input and Increment
     mutating func INI() {
-      let memval = onPortRead(bc);
+      let memval = onPortRead!(bc);
       memory.writeByte(hl, memval);
       hl &+= 1
       b &-= 1
@@ -1268,7 +1285,7 @@ public struct Z80 {
     /// Output and Increment
     mutating func OUTI() {
       let memval = memory.readByte(hl);
-      onPortWrite(c, memval);
+      onPortWrite!(bc, memval);
       hl &+= 1
       b &-= 1
 
@@ -1279,68 +1296,66 @@ public struct Z80 {
         flags.set(.f5, basedOn: b.isBitSet(5))
         flags.set(.c, basedOn: Int(memval) + 1 > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-      
-      fPV = isParity(((memval + l) & 0x07) ^ b);
+        flags.set(.pv, basedOn: ((UInt8((Int(memval) + Int(l)) & 0x07)) ^ b).isParity())
 
       tStates += 16;
     }
 
     /// Input and Decrement
     mutating func IND() {
-      let memval = onPortRead(bc);
+      let memval = onPortRead!(bc);
       memory.writeByte(hl, memval);
-      hl = (hl - 1) % 0x10000;
-      b = (b - 1) % 0x100;
-
-      fN = isBitSet(memval, 7);
-      fZ = b == 0;
-      fS = isSign8(b);
-      f3 = isBitSet(b, 3);
-      f5 = isBitSet(b, 5);
-
-      fC = fH = memval + ((c - 1) & 0xFF) > 0xFF;
-      fPV = isParity(((memval + ((c - 1) & 0xFF)) & 0x07) ^ b);
+      hl &-= 1
+      b &-= 1
+        
+        flags.set(.n, basedOn: memval.isBitSet(7))
+        flags.setZeroFlag(basedOn: b)
+        flags.set(.s, basedOn: b.isSignedBitSet())
+        flags.set(.f3, basedOn: b.isBitSet(3))
+        flags.set(.f5, basedOn: b.isBitSet(5))
+        flags.set(.c, basedOn: Int(memval) + Int(c) - 1 > 0xFF)
+        flags.set(.h, basedOn: flags.contains(.c))
+        flags.set(.pv, basedOn: (((memval &+ ((c &- 1) & 0xFF)) & 0x07) ^ b).isParity())
       tStates += 16;
     }
 
     /// Output and Decrement
     mutating func  OUTD() {
         let memval = memory.readByte(hl);
-      onPortWrite(c, memval);
-      hl = (hl - 1) % 0x10000;
-      b = (b - 1) % 0x100;
+      onPortWrite!(bc, memval);
+      hl &-= 1
+      b &-= 1
 
-      fN = true;
-      fN = isBitSet(memval, 7);
-      fZ = b == 0;
-      fS = isSign8(b);
-      f3 = isBitSet(b, 3);
-      f5 = isBitSet(b, 5);
-
-      fC = fH = memval + l > 0xFF;
-      fPV = isParity(((memval + l) & 0x07) ^ b);
-
+        flags.set(.n, basedOn: memval.isBitSet(7))
+        flags.setZeroFlag(basedOn: b)
+        flags.set(.s, basedOn: b.isSignedBitSet())
+        flags.set(.f3, basedOn: b.isBitSet(3))
+        flags.set(.f5, basedOn: b.isBitSet(5))
+        flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
+        flags.set(.h, basedOn: flags.contains(.c))
+        flags.set(.pv, basedOn: (((memval &+ l) & 0x07) ^ b).isParity())
+        
       tStates += 16;
     }
 
     /// Input, Increment and Repeat
     mutating func  INIR() {
-        let memval = onPortRead(bc);
+        let memval = onPortRead!(bc);
       memory.writeByte(hl, memval);
-      hl = (hl + 1) % 0x10000;
-      b = (b - 1) % 0x100;
+      hl &+= 1
+      b &-= 1
 
-      fN = isBitSet(memval, 7);
-      fZ = b == 0;
-      fS = isSign8(b);
-      f3 = isBitSet(b, 3);
-      f5 = isBitSet(b, 5);
-
-      fC = fH = memval + ((c + 1) & 0xFF) > 0xFF;
-      fPV = isParity(((memval + ((c + 1) & 0xFF)) & 0x07) ^ b);
+        flags.set(.n, basedOn: memval.isBitSet(7))
+        flags.setZeroFlag(basedOn: b)
+        flags.set(.s, basedOn: b.isSignedBitSet())
+        flags.set(.f3, basedOn: b.isBitSet(3))
+        flags.set(.f5, basedOn: b.isBitSet(5))
+        flags.set(.c, basedOn: Int(memval) + Int(c &+ 1) > 0xFF)
+        flags.set(.h, basedOn: flags.contains(.c))
+        flags.set(.pv, basedOn: (((memval &+ ((c &+ 1) & 0xFF)) & 0x07) ^ b).isParity())
 
       if (b != 0) {
-        pc = (pc - 2) % 0x10000;
+        pc &-= 2
         tStates += 21;
       } else {
         tStates += 16;
@@ -1350,23 +1365,23 @@ public struct Z80 {
     /// Output, Increment and Repeat
     mutating func  OTIR() {
         let memval = memory.readByte(hl);
-      onPortWrite(c, memval);
+      onPortWrite!(bc, memval);
 
-      hl = (hl + 1) % 0x10000;
-      b = (b - 1) % 0x100;
+      hl &+= 1
+      b &-= 1
 
-      fN = true;
-      fN = isBitSet(memval, 7);
-      fZ = b == 0;
-      fS = isSign8(b);
-      f3 = isBitSet(b, 3);
-      f5 = isBitSet(b, 5);
+        flags.set(.n, basedOn: memval.isBitSet(7))
+        flags.setZeroFlag(basedOn: b)
+        flags.set(.s, basedOn: b.isSignedBitSet())
+        flags.set(.f3, basedOn: b.isBitSet(3))
+        flags.set(.f5, basedOn: b.isBitSet(5))
+        flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
+        flags.set(.h, basedOn: flags.contains(.c))
 
-      fC = fH = memval + l > 0xFF;
-      fPV = isParity(((memval + l) & 0x07) ^ b);
+        flags.set(.pv, basedOn: (((memval + l) & 0x07) ^ b).isParity())
 
       if (b != 0) {
-        pc = (pc - 2) % 0x10000;
+        pc &-= 2
         tStates += 21;
       } else {
         tStates += 16;
@@ -1375,22 +1390,22 @@ public struct Z80 {
 
     /// Input, Decrement and Repeat
     mutating func  INDR() {
-        let memval = onPortRead(bc);
+        let memval = onPortRead!(bc);
       memory.writeByte(hl, memval);
-      hl = (hl - 1) % 0x10000;
-      b = (b - 1) % 0x100;
+      hl &-= 1
+      b &-= 1
 
-      fN = isBitSet(memval, 7);
-      fZ = b == 0;
-      fS = isSign8(b);
-      f3 = isBitSet(b, 3);
-      f5 = isBitSet(b, 5);
-
-      fC = fH = memval + ((c - 1) & 0xFF) > 0xFF;
-      fPV = isParity(((memval + ((c - 1) & 0xFF)) & 0x07) ^ b);
-
+        flags.set(.n, basedOn: memval.isBitSet(7))
+        flags.setZeroFlag(basedOn: b)
+        flags.set(.s, basedOn: b.isSignedBitSet())
+        flags.set(.f3, basedOn: b.isBitSet(3))
+        flags.set(.f5, basedOn: b.isBitSet(5))
+        flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
+        flags.set(.h, basedOn: flags.contains(.c))
+        flags.set(.pv, basedOn:  (((memval + ((c - 1) & 0xFF)) & 0x07) ^ b).isParity())
+        
       if (b != 0) {
-        pc = (pc - 2) % 0x10000;
+        pc &-= 2
         tStates += 21;
       } else {
         tStates += 16;
@@ -1400,23 +1415,22 @@ public struct Z80 {
     /// Output, Decrement and Repeat
     mutating func  OTDR() {
       let memval = memory.readByte(hl);
-      onPortWrite(c, memval);
+      onPortWrite!(bc, memval);
 
-      hl = (hl - 1) % 0x10000;
-      b = (b - 1) % 0x100;
+      hl &-= 1
+      b &-= 1
 
-      fN = true;
-      fN = isBitSet(memval, 7);
-      fZ = b == 0;
-      fS = isSign8(b);
-      f3 = isBitSet(b, 3);
-      f5 = isBitSet(b, 5);
-
-      fC = fH = memval + l > 0xFF;
-      fPV = isParity(((memval + l) & 0x07) ^ b);
+        flags.set(.n, basedOn: memval.isBitSet(7))
+        flags.setZeroFlag(basedOn: b)
+        flags.set(.s, basedOn: b.isSignedBitSet())
+        flags.set(.f3, basedOn: b.isBitSet(3))
+        flags.set(.f5, basedOn: b.isBitSet(5))
+        flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
+        flags.set(.h, basedOn: flags.contains(.c))
+        flags.set(.pv, basedOn: (UInt8(((Int(memval) + Int(l)) & 0x07)) ^ b).isParity())
 
       if (b != 0) {
-        pc = (pc - 2) % 0x10000;
+        pc &-= 2
         tStates += 21;
       } else {
         tStates += 16;
