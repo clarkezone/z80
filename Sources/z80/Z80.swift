@@ -1,12 +1,18 @@
-// z80.swift -- implements the Zilog Z80 processor core
 //
-// Reference notes:
+//  Z80.swift
 //
-// The Z80 microprocessor user manual can be downloaded from Zilog:
-//    http://tinyurl.com/z80manual
+//  Implements the Zilog Z80 processor core to the given specification.
 //
-// An excellent additional reference is "The Undocumented Z80 Documented", at:
-//    http://www.z80.info/zip/z80-documented.pdf
+//  Reference notes:
+//
+//  The Z80 microprocessor user manual can be downloaded from Zilog:
+//     http://tinyurl.com/z80manual
+//
+//  An excellent additional reference is "The Undocumented Z80 Documented", at:
+//     http://www.z80.info/zip/z80-documented.pdf
+//
+//  Created by Tim Sneath on 6/6/23.
+//
 
 enum InterruptMode {
     case im0, im1, im2
@@ -272,7 +278,7 @@ public struct Z80 {
     // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
 
     /// Load and Increment
-    mutating func LDI() {
+    private mutating func LDI() {
         let byteRead = memory.readByte(hl)
         memory.writeByte(de, byteRead)
 
@@ -291,7 +297,7 @@ public struct Z80 {
     }
 
     /// Load and Decrement
-    mutating func LDD() {
+    private mutating func LDD() {
         let byteRead = memory.readByte(hl)
         memory.writeByte(de, byteRead)
 
@@ -307,7 +313,7 @@ public struct Z80 {
     }
 
     /// Load, Increment and Repeat
-    mutating func LDIR() {
+    private mutating func LDIR() {
         let byteRead = memory.readByte(hl)
         memory.writeByte(de, byteRead)
 
@@ -328,7 +334,7 @@ public struct Z80 {
     }
 
     /// Load, Decrement and Repeat
-    mutating func LDDR() {
+    private mutating func LDDR() {
         let byteRead = memory.readByte(hl)
         memory.writeByte(de, byteRead)
 
@@ -351,7 +357,7 @@ public struct Z80 {
     // Arithmetic operations
 
     /// Increment
-    mutating func INC(_ originalValue: UInt8) -> UInt8 {
+    private mutating func INC(_ originalValue: UInt8) -> UInt8 {
         flags.set(.pv, basedOn: originalValue == 0x7F)
         let newValue = originalValue &+ 1
         flags.set(.h, basedOn: newValue.isBitSet(4) != originalValue.isBitSet(4))
@@ -367,7 +373,7 @@ public struct Z80 {
     }
 
     /// Decrement
-    mutating func DEC(_ originalValue: UInt8) -> UInt8 {
+    private mutating func DEC(_ originalValue: UInt8) -> UInt8 {
         flags.set(.pv, basedOn: originalValue == 0x80)
         let newValue = originalValue &- 1
         flags.set(.h, basedOn: newValue.isBitSet(4) != originalValue.isBitSet(4))
@@ -383,12 +389,12 @@ public struct Z80 {
     }
 
     /// Add with Carry (8-bit)
-    mutating func ADC8(_ x: UInt8, _ y: UInt8) -> UInt8 {
+    private mutating func ADC8(_ x: UInt8, _ y: UInt8) -> UInt8 {
         ADD8(x, y, withCarry: flags.contains(.c))
     }
 
     /// Add with Carry (16-bit)
-    mutating func ADC16(_ xx: UInt16, _ yy: UInt16) -> UInt16 {
+    private mutating func ADC16(_ xx: UInt16, _ yy: UInt16) -> UInt16 {
         // overflow in add only occurs when operand polarities are the same
         let overflowCheck = xx.isSignedBitSet() == yy.isSignedBitSet()
 
@@ -406,7 +412,7 @@ public struct Z80 {
     }
 
     /// Add (8-bit)
-    mutating func ADD8(_ x: UInt8, _ y: UInt8, withCarry: Bool = false) -> UInt8 {
+    private mutating func ADD8(_ x: UInt8, _ y: UInt8, withCarry: Bool = false) -> UInt8 {
         let carry = UInt8(withCarry ? 1 : 0)
         let lowNibbleSum = x.lowNibble + y.lowNibble + carry
         let halfCarry = (lowNibbleSum & 0x10) == 0x10
@@ -437,7 +443,7 @@ public struct Z80 {
     }
 
     /// Add (16-bit)
-    mutating func ADD16(_ xx: UInt16, _ yy: UInt16, withCarry: Bool = false) -> UInt16 {
+    private mutating func ADD16(_ xx: UInt16, _ yy: UInt16, withCarry: Bool = false) -> UInt16 {
         let carry = withCarry ? 1 : 0
 
         flags.set(.h, basedOn: Int(xx & 0x0FFF) + Int(yy & 0x0FFF) + carry > 0x0FFF)
@@ -453,12 +459,12 @@ public struct Z80 {
     }
 
     /// Subtract with Carry (8-bit)
-    mutating func SBC8(_ x: UInt8, _ y: UInt8) -> UInt8 {
+    private mutating func SBC8(_ x: UInt8, _ y: UInt8) -> UInt8 {
         return SUB8(x, y, withCarry: flags.contains(.c))
     }
 
     /// Subtract with Carry (16-bit)
-    mutating func SBC16(_ xx: UInt16, _ yy: UInt16) -> UInt16 {
+    private mutating func SBC16(_ xx: UInt16, _ yy: UInt16) -> UInt16 {
         let carry = flags.contains(.c) ? 1 : 0
 
         flags.set(.c, basedOn: Int(xx) < (Int(yy) + carry))
@@ -488,7 +494,7 @@ public struct Z80 {
     }
 
     /// Subtract (8-bit)
-    mutating func SUB8(_ x: UInt8, _ y: UInt8, withCarry: Bool = false) -> UInt8 {
+    private mutating func SUB8(_ x: UInt8, _ y: UInt8, withCarry: Bool = false) -> UInt8 {
         let carry = withCarry ? 1 : 0
 
         flags.set(.c, basedOn: Int(x) < (Int(y) + carry))
@@ -518,7 +524,7 @@ public struct Z80 {
     }
 
     /// Compare
-    mutating func CP(_ x: UInt8) {
+    private mutating func CP(_ x: UInt8) {
         _ = SUB8(a, x)
 
         flags.set(.f5, basedOn: x.isBitSet(5))
@@ -526,7 +532,7 @@ public struct Z80 {
     }
 
     /// Decimal Adjust Accumulator
-    mutating func DAA() {
+    private mutating func DAA() {
         // algorithm from http://worldofspectrum.org/faq/reference/z80reference.htm
         var correctionFactor: UInt8 = 0
         let originalA = a
@@ -561,7 +567,7 @@ public struct Z80 {
 
     // Flow operations
     /// Call
-    mutating func CALL() {
+    private mutating func CALL() {
         let callAddr = getNextWord()
 
         PUSH(pc)
@@ -572,7 +578,7 @@ public struct Z80 {
     }
 
     /// Jump Relative
-    mutating func JR(_ jump: UInt8) {
+    private mutating func JR(_ jump: UInt8) {
         // jump is treated as signed byte from -128 to 127
         let vector = jump.twosComplement
         pc = UInt16(truncatingIfNeeded: Int(pc) + Int(vector))
@@ -581,7 +587,7 @@ public struct Z80 {
     }
 
     /// Decrement and Jump if Not Zero
-    mutating func DJNZ(_ jump: UInt8) {
+    private mutating func DJNZ(_ jump: UInt8) {
         b &-= 1
         if b != 0 {
             JR(jump)
@@ -592,14 +598,14 @@ public struct Z80 {
     }
 
     /// Restart
-    mutating func RST(_ addr: UInt8) {
+    private mutating func RST(_ addr: UInt8) {
         PUSH(pc)
         pc = UInt16(addr)
         tStates += 11
     }
 
     /// Return from Non-Maskable Interrupt
-    mutating func RETN() {
+    private mutating func RETN() {
         // When an NMI is accepted, IFF1 is reset to prevent any other interrupts
         // occurring during the same period. This return ensures that the value is
         // restored from IFF2.
@@ -608,14 +614,14 @@ public struct Z80 {
     }
 
     // Stack operations
-    mutating func PUSH(_ val: UInt16) {
+    private mutating func PUSH(_ val: UInt16) {
         sp &-= 1
         memory.writeByte(sp, val.highByte)
         sp &-= 1
         memory.writeByte(sp, val.lowByte)
     }
 
-    mutating func POP() -> UInt16 {
+    private mutating func POP() -> UInt16 {
         let lowByte = memory.readByte(sp)
         sp &+= 1
         let highByte = memory.readByte(sp)
@@ -623,7 +629,7 @@ public struct Z80 {
         return UInt16.formWord(highByte, lowByte)
     }
 
-    mutating func EX_AFAFPrime() {
+    private mutating func EX_AFAFPrime() {
         swap(&a, &a_)
         swap(&f, &f_)
 
@@ -633,7 +639,7 @@ public struct Z80 {
     // Logic operations
 
     /// Compare and Decrement
-    mutating func CPD() {
+    private mutating func CPD() {
         let byteAtHL = memory.readByte(hl)
         flags.set(.h, basedOn: (a & 0x0F) < (byteAtHL & 0x0F))
         flags.set(.s, basedOn: (a &- byteAtHL).isSignedBitSet())
@@ -649,7 +655,7 @@ public struct Z80 {
     }
 
     /// Compare and Decrement Repeated
-    mutating func CPDR() {
+    private mutating func CPDR() {
         let byteAtHL = memory.readByte(hl)
         flags.set(.h, basedOn: (a & 0x0F) < (byteAtHL & 0x0F))
         flags.set(.s, basedOn: (a &- byteAtHL).isSignedBitSet())
@@ -670,7 +676,7 @@ public struct Z80 {
         }
     }
 
-    mutating func CPI() {
+    private mutating func CPI() {
         let byteAtHL = memory.readByte(hl)
         flags.set(.h, basedOn: (a & 0x0F) < (byteAtHL & 0x0F))
         flags.set(.s, basedOn: (a &- byteAtHL).isSignedBitSet())
@@ -686,7 +692,7 @@ public struct Z80 {
         tStates += 16
     }
 
-    mutating func CPIR() {
+    private mutating func CPIR() {
         let byteAtHL = memory.readByte(hl)
         flags.set(.h, basedOn: (a & 0x0F) < (byteAtHL & 0x0F))
         flags.set(.s, basedOn: (a &- byteAtHL).isSignedBitSet())
@@ -707,7 +713,7 @@ public struct Z80 {
         }
     }
 
-    mutating func OR(_ registerValue: UInt8) -> UInt8 {
+    private mutating func OR(_ registerValue: UInt8) -> UInt8 {
         let result: UInt8 = a | registerValue
         flags.set(.s, basedOn: result.isSignedBitSet())
         flags.setZeroFlag(basedOn: result)
@@ -721,7 +727,7 @@ public struct Z80 {
         return result
     }
 
-    mutating func XOR(_ registerValue: UInt8) -> UInt8 {
+    private mutating func XOR(_ registerValue: UInt8) -> UInt8 {
         let result: UInt8 = a ^ registerValue
         flags.set(.s, basedOn: result.isSignedBitSet())
         flags.setZeroFlag(basedOn: result)
@@ -736,7 +742,7 @@ public struct Z80 {
     }
 
     // TODO: Mutate a register directly for AND/OR/XOR/NEG
-    mutating func AND(_ registerValue: UInt8) -> UInt8 {
+    private mutating func AND(_ registerValue: UInt8) -> UInt8 {
         let result: UInt8 = a & registerValue
         flags.set(.s, basedOn: result.isSignedBitSet())
         flags.setZeroFlag(basedOn: result)
@@ -751,7 +757,7 @@ public struct Z80 {
         return result
     }
 
-    mutating func NEG() {
+    private mutating func NEG() {
         // TODO: Make twos complement return UInt8
         // returns two's complement of a
         flags.set(.pv, basedOn: a == 0x80)
@@ -771,7 +777,7 @@ public struct Z80 {
     }
 
     /// Complement
-    mutating func CPL() {
+    private mutating func CPL() {
         a = ~a
         flags.set(.f5, basedOn: a.isBitSet(5))
         flags.set(.f3, basedOn: a.isBitSet(3))
@@ -781,7 +787,7 @@ public struct Z80 {
     }
 
     /// Set Carry Flag
-    mutating func SCF() {
+    private mutating func SCF() {
         flags.set(.f5, basedOn: a.isBitSet(5))
         flags.set(.f3, basedOn: a.isBitSet(3))
         flags.remove([.h, .n])
@@ -789,7 +795,7 @@ public struct Z80 {
     }
 
     /// Clear Carry Flag
-    mutating func CCF() {
+    private mutating func CCF() {
         flags.set(.f5, basedOn: a.isBitSet(5))
         flags.set(.f3, basedOn: a.isBitSet(3))
 
@@ -801,7 +807,7 @@ public struct Z80 {
     }
 
     /// Rotate Left Circular
-    mutating func RLC(_ value: UInt8) -> UInt8 {
+    private mutating func RLC(_ value: UInt8) -> UInt8 {
         // rotates register r to the left
         // bit 7 is copied to carry and to bit 0
         flags.set(.c, basedOn: value.isSignedBitSet())
@@ -819,7 +825,7 @@ public struct Z80 {
     }
 
     /// Rotate Left Circular Accumulator
-    mutating func RLCA() {
+    private mutating func RLCA() {
         // rotates register A to the left
         // bit 7 is copied to carry and to bit 0
         flags.set(.c, basedOn: a.isSignedBitSet())
@@ -833,7 +839,7 @@ public struct Z80 {
     }
 
     /// Rotate Right Circular
-    mutating func RRC(_ value: UInt8) -> UInt8 {
+    private mutating func RRC(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(0))
         var result: UInt8 = value &>> 1
         if flags.contains(.c) { result.setBit(7) }
@@ -849,7 +855,7 @@ public struct Z80 {
     }
 
     /// Rotate Right Circular Accumulator
-    mutating func RRCA() {
+    private mutating func RRCA() {
         flags.set(.c, basedOn: a.isBitSet(0))
         a &>>= 1
         if flags.contains(.c) { a.setBit(7) }
@@ -863,7 +869,7 @@ public struct Z80 {
     }
 
     /// Rotate Left
-    mutating func RL(_ value: UInt8) -> UInt8 {
+    private mutating func RL(_ value: UInt8) -> UInt8 {
         // rotates register r to the left, through carry.
         // carry becomes the LSB of the new r
 
@@ -884,7 +890,7 @@ public struct Z80 {
     }
 
     /// Rotate Left Accumulator
-    mutating func RLA() {
+    private mutating func RLA() {
         // rotates register r to the left, through carry.
         // carry becomes the LSB of the new r
 
@@ -903,7 +909,7 @@ public struct Z80 {
     }
 
     /// Rotate Right
-    mutating func RR(_ value: UInt8) -> UInt8 {
+    private mutating func RR(_ value: UInt8) -> UInt8 {
         let carryBitInitiallySet = flags.contains(.c)
 
         flags.set(.c, basedOn: value.isBitSet(0))
@@ -922,7 +928,7 @@ public struct Z80 {
     }
 
     /// Rotate Right Accumulator
-    mutating func RRA() {
+    private mutating func RRA() {
         let carryBitInitiallySet = flags.contains(.c)
         flags.set(.c, basedOn: a.isBitSet(0))
         a &>>= 1
@@ -940,7 +946,7 @@ public struct Z80 {
     }
 
     /// Shift Left Arithmetic
-    mutating func SLA(_ value: UInt8) -> UInt8 {
+    private mutating func SLA(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(7))
         let result: UInt8 = value &<< 1
 
@@ -956,7 +962,7 @@ public struct Z80 {
     }
 
     /// Shift Right Arithmetic
-    mutating func SRA(_ value: UInt8) -> UInt8 {
+    private mutating func SRA(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(0))
         var result: UInt8 = value &>> 1
 
@@ -974,7 +980,7 @@ public struct Z80 {
     }
 
     /// Shift Left Logical
-    mutating func SLL(_ value: UInt8) -> UInt8 {
+    private mutating func SLL(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(7))
         var result: UInt8 = value &<< 1
         result.setBit(0)
@@ -991,7 +997,7 @@ public struct Z80 {
     }
 
     /// Shift Right Logical
-    mutating func SRL(_ value: UInt8) -> UInt8 {
+    private mutating func SRL(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(0))
         var result: UInt8 = value &>> 1
         result.resetBit(7)
@@ -1008,7 +1014,7 @@ public struct Z80 {
     }
 
     /// Rotate Left BCD Digit
-    mutating func RLD() {
+    private mutating func RLD() {
         // TODO: Overflow condition for this and RRD
         let byteAtHL = memory.readByte(hl)
 
@@ -1032,7 +1038,7 @@ public struct Z80 {
     }
 
     /// Rotate Right BCD Digit
-    mutating func RRD() {
+    private mutating func RRD() {
         let byteAtHL = memory.readByte(hl)
 
         var result: UInt8 = (a & 0x0F) &<< 4
@@ -1054,16 +1060,16 @@ public struct Z80 {
         tStates += 18
     }
 
-    mutating func displacedIX() -> UInt16 {
+    private mutating func displacedIX() -> UInt16 {
         UInt16(truncatingIfNeeded: Int(ix) + Int(getNextByte().twosComplement))
     }
 
-    mutating func displacedIY() -> UInt16 {
+    private mutating func displacedIY() -> UInt16 {
         UInt16(truncatingIfNeeded: Int(iy) + Int(getNextByte().twosComplement))
     }
 
     // Bitwise operations
-    mutating func BIT(bitToTest: Int, register: Int) {
+    private mutating func BIT(bitToTest: Int, register: Int) {
         switch register {
             case 0x0:
                 flags.set(.z, basedOn: !(b.isBitSet(bitToTest)))
@@ -1121,7 +1127,7 @@ public struct Z80 {
         flags.remove(.n)
     }
 
-    mutating func RES(bitToReset: Int, register: Int) {
+    private mutating func RES(bitToReset: Int, register: Int) {
         switch register {
             case 0x0:
                 b.resetBit(bitToReset)
@@ -1146,7 +1152,7 @@ public struct Z80 {
         }
     }
 
-    mutating func SET(bitToSet: Int, register: Int) {
+    private mutating func SET(bitToSet: Int, register: Int) {
         switch register {
             case 0x0:
                 b.setBit(bitToSet)
@@ -1171,7 +1177,7 @@ public struct Z80 {
         }
     }
 
-    mutating func callRotation(operation: Int, register: inout UInt8) {
+    private mutating func callRotation(operation: Int, register: inout UInt8) {
         switch operation {
             case 0x00:
                 register = RLC(register)
@@ -1194,7 +1200,7 @@ public struct Z80 {
         }
     }
 
-    mutating func rotate(operation: Int, register: Int) {
+    private mutating func rotate(operation: Int, register: Int) {
         switch register {
             case 0x00:
                 var register = b
@@ -1235,8 +1241,7 @@ public struct Z80 {
 
     // Port operations and interrupts
 
-    // TODO: Is this used?
-    mutating func inSetFlags(_ register: UInt8) {
+    private mutating func inSetFlags(_ register: UInt8) {
         flags.set(.s, basedOn: register.isSignedBitSet())
         flags.setZeroFlag(basedOn: register)
         flags.remove([.h, .n])
@@ -1245,25 +1250,25 @@ public struct Z80 {
         flags.set(.f3, basedOn: register.isBitSet(3))
     }
 
-    func OUT(portNumber: UInt16, value: UInt8) {
+    private func OUT(portNumber: UInt16, value: UInt8) {
         onPortWrite!(portNumber, value)
     }
 
-    func OUTA(portNumber: UInt16, value: UInt8) {
+    private func OUTA(portNumber: UInt16, value: UInt8) {
         onPortWrite!(portNumber, value)
     }
 
-    mutating func INA(_ operandByte: UInt8) {
+    private mutating func INA(_ operandByte: UInt8) {
         // The operand is placed on the bottom half (A0 through A7) of the address
         // bus to select the I/O device at one of 256 possible ports. The contents
         // of the Accumulator also appear on the top half (A8 through A15) of the
         // address bus at this time.
-        let addressBus = UInt16.formWord(operandByte, a)
+        let addressBus = UInt16.formWord(a, operandByte)
         a = onPortRead!(addressBus)
     }
 
     /// Input and Increment
-    mutating func INI() {
+    private mutating func INI() {
         let memval = onPortRead!(bc)
         memory.writeByte(hl, memval)
         hl &+= 1
@@ -1276,13 +1281,14 @@ public struct Z80 {
         flags.set(.f3, basedOn: b.isBitSet(3))
         flags.set(.c, basedOn: Int(memval) + Int(c &+ 1) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
+        // TODO: Fix this
         flags.set(.pv, basedOn: (UInt8(truncatingIfNeeded: Int(memval) + Int(c &+ 1)) ^ b).isParity())
 
         tStates += 16
     }
 
     /// Output and Increment
-    mutating func OUTI() {
+    private mutating func OUTI() {
         let memval = memory.readByte(hl)
         onPortWrite!(bc, memval)
         hl &+= 1
@@ -1293,15 +1299,15 @@ public struct Z80 {
         flags.set(.s, basedOn: b.isSignedBitSet())
         flags.set(.f3, basedOn: b.isBitSet(3))
         flags.set(.f5, basedOn: b.isBitSet(5))
-        flags.set(.c, basedOn: Int(memval) + 1 > 0xFF)
+        flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-        flags.set(.pv, basedOn: (UInt8((Int(memval) + Int(l)) & 0x07) ^ b).isParity())
+        flags.set(.pv, basedOn: (((memval &+ l) & 0x07) ^ b).isParity())
 
         tStates += 16
     }
 
     /// Input and Decrement
-    mutating func IND() {
+    private mutating func IND() {
         let memval = onPortRead!(bc)
         memory.writeByte(hl, memval)
         hl &-= 1
@@ -1319,7 +1325,7 @@ public struct Z80 {
     }
 
     /// Output and Decrement
-    mutating func OUTD() {
+    private mutating func OUTD() {
         let memval = memory.readByte(hl)
         onPortWrite!(bc, memval)
         hl &-= 1
@@ -1338,7 +1344,7 @@ public struct Z80 {
     }
 
     /// Input, Increment and Repeat
-    mutating func INIR() {
+    private mutating func INIR() {
         let memval = onPortRead!(bc)
         memory.writeByte(hl, memval)
         hl &+= 1
@@ -1362,7 +1368,7 @@ public struct Z80 {
     }
 
     /// Output, Increment and Repeat
-    mutating func OTIR() {
+    private mutating func OTIR() {
         let memval = memory.readByte(hl)
         onPortWrite!(bc, memval)
 
@@ -1377,7 +1383,7 @@ public struct Z80 {
         flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
 
-        flags.set(.pv, basedOn: (((memval + l) & 0x07) ^ b).isParity())
+        flags.set(.pv, basedOn: (((memval &+ l) & 0x07) ^ b).isParity())
 
         if b != 0 {
             pc &-= 2
@@ -1388,7 +1394,7 @@ public struct Z80 {
     }
 
     /// Input, Decrement and Repeat
-    mutating func INDR() {
+    private mutating func INDR() {
         let memval = onPortRead!(bc)
         memory.writeByte(hl, memval)
         hl &-= 1
@@ -1401,7 +1407,7 @@ public struct Z80 {
         flags.set(.f5, basedOn: b.isBitSet(5))
         flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-        flags.set(.pv, basedOn: (((memval + ((c - 1) & 0xFF)) & 0x07) ^ b).isParity())
+        flags.set(.pv, basedOn: (((memval &+ ((c - 1) & 0xFF)) & 0x07) ^ b).isParity())
 
         if b != 0 {
             pc &-= 2
@@ -1412,7 +1418,7 @@ public struct Z80 {
     }
 
     /// Output, Decrement and Repeat
-    mutating func OTDR() {
+    private mutating func OTDR() {
         let memval = memory.readByte(hl)
         onPortWrite!(bc, memval)
 
@@ -1438,7 +1444,7 @@ public struct Z80 {
 
     // MARK: Opcode Decoding
 
-    mutating func DecodeCBOpcode() {
+    private mutating func DecodeCBOpcode() {
         let opCode = getNextByte()
         r += 1
 
@@ -1478,7 +1484,7 @@ public struct Z80 {
         }
     }
 
-    mutating func DecodeDDOpcode() {
+    private mutating func DecodeDDOpcode() {
         let opCode = getNextByte()
         r &+= 1
 
@@ -2043,7 +2049,7 @@ public struct Z80 {
         }
     }
 
-    mutating func DecodeEDOpcode() {
+    private mutating func DecodeEDOpcode() {
         let opCode = getNextByte()
         r += 1
 
@@ -2349,7 +2355,7 @@ public struct Z80 {
     }
 
     // TODO: Coalesce with IX equivalent function (DecodeDDOpcode) using inout param
-    mutating func DecodeFDOpcode() {
+    private mutating func DecodeFDOpcode() {
         let opCode = getNextByte()
         r &+= 1
 
@@ -2805,7 +2811,7 @@ public struct Z80 {
         }
     }
 
-    mutating func DecodeFDCBOpCode() {
+    private mutating func DecodeFDCBOpCode() {
         // format is FDCB[addr][opcode]
         let addr = displacedIY()
         let opCode = getNextByte()

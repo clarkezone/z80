@@ -42,11 +42,13 @@ class Z80FuseTests: XCTestCase {
     }
 
     func checkRegisters(af: UInt16 = 0, bc: UInt16 = 0, de: UInt16 = 0, hl: UInt16 = 0, af_: UInt16 = 0, bc_: UInt16 = 0, de_: UInt16 = 0, hl_: UInt16 = 0, ix: UInt16 = 0, iy: UInt16 = 0, sp: UInt16 = 0, pc: UInt16 = 0) {
-        XCTAssertEqual(z80.af.highByte, af.highByte, "Register A: expected \(af.highByte), actual \(z80.af.highByte)}")
+        XCTAssertEqual(z80.af.highByte, af.highByte,
+                       "Register A: expected \(af.highByte.toHex), actual \(z80.af.highByte.toHex)")
         // While we attempt basic emulation of the undocumented bits 3 and 5,
         // we're not going to fail a test because of them (at least, right now).
         // So we OR both values with 0b000101000 (0x28) to mask out any difference.
-        XCTAssertEqual(z80.af.lowByte | 0x28, af.lowByte | 0x28, "Register F [SZ5H3PNC]: expected \(af.lowByte), actual \(z80.af.lowByte)")
+        XCTAssertEqual(z80.af.lowByte | 0x28, af.lowByte | 0x28,
+                       "Register F [SZ5H3PNC]: expected \(af.lowByte.toBinary), actual \(z80.af.lowByte.toBinary)")
         XCTAssertEqual(z80.bc, bc, "Register BC mismatch")
         XCTAssertEqual(z80.de, de, "Register DE mismatch")
         XCTAssertEqual(z80.hl, hl, "Register HL mismatch")

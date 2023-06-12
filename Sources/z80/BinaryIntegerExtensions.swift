@@ -53,6 +53,13 @@ extension UInt16 {
     static func formWord(_ highByte: UInt8, _ lowByte: UInt8) -> UInt16 {
         (UInt16(highByte) << 8) + UInt16(lowByte)
     }
+    
+    /// Returns an eight character binary representation of the byte value
+    var toHex: String { "0x" + String(self, radix: 16).padLeft(toLength: 4, withPad: "0") }
+    
+    /// Returns an eight character binary representation of the byte value
+    var toBinary: String { String(self, radix: 2).padLeft(toLength: 16, withPad: "0") }
+
 }
 
 extension UInt8 {
@@ -64,4 +71,16 @@ extension UInt8 {
     
     /// Calculates 2s complement of an 8-bit value.
     var twosComplement: Int8 { Int8(bitPattern: self) }
+
+    /// Returns an eight character binary representation of the byte value
+    var toHex: String { "0x" + String(self, radix: 16).padLeft(toLength: 2, withPad: "0") }
+    
+    /// Returns an eight character binary representation of the byte value
+    var toBinary: String { String(self, radix: 2).padLeft(toLength: 8, withPad: "0") }
+}
+
+extension String {
+    func padLeft(toLength: Int, withPad: String) -> String {
+        return String(repeating: withPad.first ?? " ", count: toLength - self.count).appending(self)
+    }
 }
