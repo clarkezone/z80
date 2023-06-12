@@ -236,8 +236,8 @@ public struct Z80 {
 
         flags.remove([.h, .n])
 
-        flags.set(.f5, basedOn: (byteRead + a).isBitSet(1))
-        flags.set(.f3, basedOn: (byteRead + a).isBitSet(3))
+        flags.set(.f5, basedOn: (byteRead &+ a).isBitSet(1))
+        flags.set(.f3, basedOn: (byteRead &+ a).isBitSet(3))
 
         tStates += 16
     }
@@ -252,8 +252,8 @@ public struct Z80 {
         bc &-= 1
         flags.remove([.h, .n])
         flags.set(.pv, basedOn: bc != 0)
-        flags.set(.f5, basedOn: (byteRead + a).isBitSet(1))
-        flags.set(.f3, basedOn: (byteRead + a).isBitSet(3))
+        flags.set(.f5, basedOn: (byteRead &+ a).isBitSet(1))
+        flags.set(.f3, basedOn: (byteRead &+ a).isBitSet(3))
 
         tStates += 16
     }
@@ -273,8 +273,8 @@ public struct Z80 {
         } else {
             tStates += 16
         }
-        flags.set(.f5, basedOn: (byteRead + a).isBitSet(1))
-        flags.set(.f3, basedOn: (byteRead + a).isBitSet(3))
+        flags.set(.f5, basedOn: (byteRead &+ a).isBitSet(1))
+        flags.set(.f3, basedOn: (byteRead &+ a).isBitSet(3))
         flags.remove([.h, .n])
         flags.set(.pv, basedOn: bc != 0)
     }
@@ -294,8 +294,8 @@ public struct Z80 {
         } else {
             tStates += 16
         }
-        flags.set(.f5, basedOn: (byteRead + a).isBitSet(1))
-        flags.set(.f3, basedOn: (byteRead + a).isBitSet(3))
+        flags.set(.f5, basedOn: (byteRead &+ a).isBitSet(1))
+        flags.set(.f3, basedOn: (byteRead &+ a).isBitSet(3))
         flags.remove([.h, .n])
         flags.set(.pv, basedOn: bc != 0)
     }
@@ -1676,7 +1676,7 @@ public struct Z80 {
                     _ = executeNextInstruction()
                 } else {
                     return
-//            throw Exception("Opcode DD${toHex8(opCode)} not understood. ");
+//                  throw Exception("Opcode DD${toHex8(opCode)} not understood. ");
                 }
         }
     }
@@ -2086,6 +2086,567 @@ public struct Z80 {
 
             default:
                 break
+        }
+    }
+
+    // TODO: Coalesce with IX equivalent function (DecodeDDOpcode) using inout param
+    mutating func DecodeFDOpcode() {
+        let opCode = getNextByte()
+        r &+= 1
+
+        var addr: UInt16 = 0
+
+        switch opCode {
+            // NOP
+            case 0x00:
+                tStates += 8
+
+            // ADD IY, BC
+            case 0x09:
+                iy = ADD16(iy, bc)
+                tStates += 4
+
+            // ADD IY, DE
+            case 0x19:
+                iy = ADD16(iy, de)
+                tStates += 4
+
+            // LD IY, **
+            case 0x21:
+                iy = getNextWord()
+                tStates += 14
+
+            // LD (**), IY
+            case 0x22:
+                memory.writeWord(getNextWord(), iy)
+                tStates += 20
+
+            // INC IY
+            case 0x23:
+                iy &+= 1
+                tStates += 10
+
+            // INC IYH
+            case 0x24:
+                iyh = INC(iyh)
+                tStates += 4
+
+            // DEC IYH
+            case 0x25:
+                iyh = DEC(iyh)
+                tStates += 4
+
+            // LD IYH, *
+            case 0x26:
+                iyh = getNextByte()
+                tStates += 11
+
+            // ADD IY, IY
+            case 0x29:
+                iy = ADD16(iy, iy)
+                tStates += 4
+
+            // LD IY, (**)
+            case 0x2A:
+                iy = memory.readWord(getNextWord())
+                tStates += 20
+
+            // DEC IY
+            case 0x2B:
+                iy &-= 1
+                tStates += 10
+
+            // INC IYL
+            case 0x2C:
+                iyl = INC(iyl)
+                tStates += 4
+
+            // DEC IYL
+            case 0x2D:
+                iyl = DEC(iyl)
+                tStates += 4
+
+            // LD IYH, *
+            case 0x2E:
+                iyl = getNextByte()
+                tStates += 11
+
+            // INC (IY+*)
+            case 0x34:
+                addr = displacedIY()
+                memory.writeByte(addr, INC(memory.readByte(addr)))
+                tStates += 19
+
+            // DEC (IY+*)
+            case 0x35:
+                addr = displacedIY()
+                memory.writeByte(addr, DEC(memory.readByte(addr)))
+                tStates += 19
+
+            // LD (IY+*), *
+            case 0x36:
+                memory.writeByte(displacedIY(), getNextByte())
+                tStates += 19
+
+            // ADD IY, SP
+            case 0x39:
+                iy = ADD16(iy, sp)
+                tStates += 4
+
+            // LD B, IYH
+            case 0x44:
+                b = iyh
+                tStates += 8
+
+            // LD B, IYL
+            case 0x45:
+                b = iyl
+                tStates += 8
+
+            // LD B, (IY+*)
+            case 0x46:
+                b = memory.readByte(displacedIY())
+                tStates += 19
+
+            // LD C, IYH
+            case 0x4C:
+                c = iyh
+                tStates += 8
+
+            // LD C, IYL
+            case 0x4D:
+                c = iyl
+                tStates += 8
+
+            // LD C, (IY+*)
+            case 0x4E:
+                c = memory.readByte(displacedIY())
+                tStates += 19
+
+            // LD D, IYH
+            case 0x54:
+                d = iyh
+                tStates += 8
+
+            // LD D, IYL
+            case 0x55:
+                d = iyl
+                tStates += 8
+
+            // LD D, (IY+*)
+            case 0x56:
+                d = memory.readByte(displacedIY())
+                tStates += 19
+
+            // LD E, IYH
+            case 0x5C:
+                e = iyh
+                tStates += 8
+
+            // LD E, IYL
+            case 0x5D:
+                e = iyl
+                tStates += 8
+
+            // LD E, (IY+*)
+            case 0x5E:
+                e = memory.readByte(displacedIY())
+                tStates += 19
+
+            // LD IYH, B
+            case 0x60:
+                iyh = b
+                tStates += 8
+
+            // LD IYH, C
+            case 0x61:
+                iyh = c
+                tStates += 8
+
+            // LD IYH, D
+            case 0x62:
+                iyh = d
+                tStates += 8
+
+            // LD IYH, E
+            case 0x63:
+                iyh = e
+                tStates += 8
+
+            // LD IYH, IYH
+            case 0x64:
+                tStates += 8
+
+            // LD IYH, IYL
+            case 0x65:
+                iyh = iyl
+                tStates += 8
+
+            // LD H, (IY+*)
+            case 0x66:
+                h = memory.readByte(displacedIY())
+                tStates += 19
+
+            // LD IYH, A
+            case 0x67:
+                iyh = a
+                tStates += 8
+
+            // LD IYL, B
+            case 0x68:
+                iyl = b
+                tStates += 8
+
+            // LD IYL, C
+            case 0x69:
+                iyl = c
+                tStates += 8
+
+            // LD IYL, D
+            case 0x6A:
+                iyl = d
+                tStates += 8
+
+            // LD IYL, E
+            case 0x6B:
+                iyl = e
+                tStates += 8
+
+            // LD IYL, IYH
+            case 0x6C:
+                iyl = iyh
+                tStates += 8
+
+            // LD IYL, IYL
+            case 0x6D:
+                tStates += 8
+
+            // LD L, (IY+*)
+            case 0x6E:
+                l = memory.readByte(displacedIY())
+                tStates += 19
+
+            // LD IYL, A
+            case 0x6F:
+                iyl = a
+                tStates += 8
+
+            // LD (IY+*), B
+            case 0x70:
+                memory.writeByte(displacedIY(), b)
+                tStates += 19
+
+            // LD (IY+*), C
+            case 0x71:
+                memory.writeByte(displacedIY(), c)
+                tStates += 19
+
+            // LD (IY+*), D
+            case 0x72:
+                memory.writeByte(displacedIY(), d)
+                tStates += 19
+
+            // LD (IY+*), E
+            case 0x73:
+                memory.writeByte(displacedIY(), e)
+                tStates += 19
+
+            // LD (IY+*), H
+            case 0x74:
+                memory.writeByte(displacedIY(), h)
+                tStates += 19
+
+            // LD (IY+*), L
+            case 0x75:
+                memory.writeByte(displacedIY(), l)
+                tStates += 19
+
+            // LD (IY+*), A
+            case 0x77:
+                memory.writeByte(displacedIY(), a)
+                tStates += 19
+
+            // LD A, IYH
+            case 0x7C:
+                a = iyh
+                tStates += 8
+
+            // LD A, IYL
+            case 0x7D:
+                a = iyl
+                tStates += 8
+
+            // LD A, (IY+*)
+            case 0x7E:
+                a = memory.readByte(displacedIY())
+                tStates += 19
+
+            // ADD A, IYH
+            case 0x84:
+                a = ADD8(a, iyh)
+                tStates += 4
+
+            // ADD A, IYL
+            case 0x85:
+                a = ADD8(a, iyl)
+                tStates += 4
+
+            // ADD A, (IY+*)
+            case 0x86:
+                a = ADD8(a, memory.readByte(displacedIY()))
+                tStates += 15
+
+            // ADC A, IYH
+            case 0x8C:
+                a = ADC8(a, iyh)
+                tStates += 4
+
+            // ADC A, IYL
+            case 0x8D:
+                a = ADC8(a, iyl)
+                tStates += 4
+
+            // ADC A, (IY+*)
+            case 0x8E:
+                a = ADC8(a, memory.readByte(displacedIY()))
+                tStates += 15
+
+            // SUB IYH
+            case 0x94:
+                a = SUB8(a, iyh)
+                tStates += 4
+
+            // SUB IYL
+            case 0x95:
+                a = SUB8(a, iyl)
+                tStates += 4
+
+            // SUB (IY+*)
+            case 0x96:
+                a = SUB8(a, memory.readByte(displacedIY()))
+                tStates += 15
+
+            // SBC A, IYH
+            case 0x9C:
+                a = SBC8(a, iyh)
+                tStates += 4
+
+            // SBC A, IYL
+            case 0x9D:
+                a = SBC8(a, iyl)
+                tStates += 4
+
+            // SBC A, (IY+*)
+            case 0x9E:
+                a = SBC8(a, memory.readByte(displacedIY()))
+                tStates += 15
+
+            // AND IYH
+            case 0xA4:
+                a = AND(iyh)
+                tStates += 4
+
+            // AND IYL
+            case 0xA5:
+                a = AND(iyl)
+                tStates += 4
+
+            // AND (IY+*)
+            case 0xA6:
+                a = AND(memory.readByte(displacedIY()))
+                tStates += 15
+
+            // XOR (IY+*)
+            case 0xAE:
+                a = XOR(memory.readByte(displacedIY()))
+                tStates += 15
+
+            // XOR IYH
+            case 0xAC:
+                a = XOR(iyh)
+                tStates += 4
+
+            // XOR IYL
+            case 0xAD:
+                a = XOR(iyl)
+                tStates += 4
+
+            // OR IYH
+            case 0xB4:
+                a = OR(iyh)
+                tStates += 4
+
+            // OR IYL
+            case 0xB5:
+                a = OR(iyl)
+                tStates += 4
+
+            // OR (IY+*)
+            case 0xB6:
+                a = OR(memory.readByte(displacedIY()))
+                tStates += 15
+
+            // CP IYH
+            case 0xBC:
+                CP(iyh)
+                tStates += 4
+
+            // CP IYL
+            case 0xBD:
+                CP(iyl)
+                tStates += 4
+
+            // CP (IY+*)
+            case 0xBE:
+                CP(memory.readByte(displacedIY()))
+                tStates += 15
+
+            // bitwise instructions
+            case 0xCB:
+                DecodeFDCBOpCode()
+
+            // POP IY
+            case 0xE1:
+                iy = POP()
+                tStates += 14
+
+            // EX (SP), IY
+            case 0xE3:
+                let temp = memory.readWord(sp)
+                memory.writeWord(sp, iy)
+                iy = temp
+                tStates += 23
+
+            // PUSH IY
+            case 0xE5:
+                PUSH(iy)
+                tStates += 15
+
+            // JP (IY)
+            // note that the brackets in the instruction are an eccentricity, the result
+            // should be iy rather than the contents of addr(iy)
+            case 0xE9:
+                pc = iy
+                tStates += 8
+
+            // LD SP, IY
+            case 0xF9:
+                sp = iy
+                tStates += 10
+
+            default:
+                if extendedCodes.contains(opCode) {
+                    tStates += 4 // instructions take an extra 4 bytes over unprefixed
+                    pc &-= 1 // go back one
+                    _ = executeNextInstruction()
+                } else {
+                    return
+//            throw Exception("Opcode FD${toHex8(opCode)} not understood. ");
+                }
+        }
+    }
+
+    mutating func DecodeFDCBOpCode() {
+        // format is FDCB[addr][opcode]
+        let addr = displacedIY()
+        let opCode = getNextByte()
+
+        // BIT
+        if opCode >= 0x40, opCode <= 0x7F {
+            let val = memory.readByte(addr)
+            let bit: UInt8 = (opCode & 0x38) >> 3
+            flags.set(.z, basedOn: !val.isBitSet(Int(bit)))
+            flags.set(.pv, basedOn: flags.contains(.z)) // undocumented, but same as fZ
+            flags.insert(.h)
+            flags.remove(.n)
+            flags.set(.f5, basedOn: (addr >> 8).isBitSet(5))
+            flags.set(.f3, basedOn: (addr >> 8).isBitSet(3))
+            if bit == 7 {
+                flags.set(.s, basedOn: val.isSignedBitSet())
+            } else {
+                flags.remove(.s)
+            }
+            tStates += 20
+            return
+        } else {
+            // Here follows a double-pass switch statement to determine the opcode
+            // results. Firstly, we determine which kind of operation is being
+            // requested, and then we identify where the result should be placed.
+            var opResult: UInt8 = 0
+
+            let opCodeType = (opCode & 0xF8) >> 3
+            switch opCodeType {
+                // RLC (IY+*)
+                case 0x00:
+                    opResult = RLC(memory.readByte(addr))
+
+                // RRC (IY+*)
+                case 0x01:
+                    opResult = RRC(memory.readByte(addr))
+
+                // RL (IY+*)
+                case 0x02:
+                    opResult = RL(memory.readByte(addr))
+
+                // RR (IY+*)
+                case 0x03:
+                    opResult = RR(memory.readByte(addr))
+
+                // SLA (IY+*)
+                case 0x04:
+                    opResult = SLA(memory.readByte(addr))
+
+                // SRA (IY+*)
+                case 0x05:
+                    opResult = SRA(memory.readByte(addr))
+
+                // SLL (IY+*)
+                case 0x06:
+                    opResult = SLL(memory.readByte(addr))
+
+                // SRL (IY+*)
+                case 0x07:
+                    opResult = SRL(memory.readByte(addr))
+
+                // RES n, (IY+*)
+                case 0x10...0x17:
+                    let bitToReset = (opCode & 0x38) >> 3
+                    opResult = memory.readByte(addr)
+                    opResult.resetBit(Int(bitToReset))
+
+                // SET n, (IY+*)
+                case 0x18...0x1F:
+                    let bitToSet = (opCode & 0x38) >> 3
+                    opResult = memory.readByte(addr)
+                    opResult.setBit(Int(bitToSet))
+                default:
+                    break
+            }
+            memory.writeByte(addr, opResult)
+
+            let opCodeTarget = opCode & 0x07
+            switch opCodeTarget {
+                case 0x00: // b
+                    b = opResult
+                case 0x01: // c
+                    c = opResult
+                case 0x02: // d
+                    d = opResult
+                case 0x03: // e
+                    e = opResult
+                case 0x04: // h
+                    h = opResult
+                case 0x05: // l
+                    l = opResult
+                case 0x06: // no register
+                    break
+                case 0x07: // a
+                    a = opResult
+                default:
+                    break
+            }
+
+            tStates += 23
         }
     }
 
@@ -3385,7 +3946,7 @@ public struct Z80 {
 
             // IY INSTRUCTIONS
             case 0xFD:
-                return DecodeFDOpcode()
+                DecodeFDOpcode()
 
             // CP *
             case 0xFE:
@@ -3402,6 +3963,4 @@ public struct Z80 {
         }
         return true
     }
-
-    func DecodeFDOpcode() -> Bool { false }
 }
