@@ -735,8 +735,12 @@ class Z80InstructionTests: XCTestCase
         z80.a = 0x12
         executeInstructions([0xb4])
         XCTAssertEqual(z80.a, 0x5a)
-        XCTAssertEqual(z80.flags.contains(.pv), true)
-        XCTAssertEqual(z80.flags.contains(.s) || z80.flags.contains(.z) || z80.flags.contains(.h) || z80.flags.contains(.n) || z80.flags.contains(.c), false)
+        XCTAssertTrue(z80.flags.contains(.pv))
+        XCTAssertFalse(z80.flags.contains(.s))
+        XCTAssertFalse(z80.flags.contains(.z))
+        XCTAssertFalse(z80.flags.contains(.h))
+        XCTAssertFalse(z80.flags.contains(.n))
+        XCTAssertFalse(z80.flags.contains(.c))
     }
 
     func testXOR_s() // XOR s
@@ -744,8 +748,12 @@ class Z80InstructionTests: XCTestCase
         z80.a = 0x96
         executeInstructions([0xee, 0x5d])
         XCTAssertEqual(z80.a, 0xcb)
-        XCTAssertEqual(z80.flags.contains(.s), true)
-        XCTAssertEqual(z80.flags.contains(.z) || z80.flags.contains(.h) || z80.flags.contains(.pv) || z80.flags.contains(.n) || z80.flags.contains(.c), false)
+        XCTAssertTrue(z80.flags.contains(.s))
+        XCTAssertFalse(z80.flags.contains(.z))
+        XCTAssertFalse(z80.flags.contains(.h))
+        XCTAssertFalse(z80.flags.contains(.pv))
+        XCTAssertFalse(z80.flags.contains(.n))
+        XCTAssertFalse(z80.flags.contains(.c))
     }
 
     func testCP_s() // CP s
@@ -982,7 +990,7 @@ class Z80InstructionTests: XCTestCase
         z80.a = 0x11
         executeInstructions([0x0f])
         XCTAssertEqual(z80.a, 0x88)
-        XCTAssertEqual(z80.flags.contains(.c), true)
+        XCTAssertTrue(z80.flags.contains(.c))
     }
 
     func testRRA() // RRA
@@ -993,8 +1001,9 @@ class Z80InstructionTests: XCTestCase
         z80.flags.remove(.c)
         executeInstructions([0x1f])
         XCTAssertEqual(z80.a, 0x70)
-        XCTAssertEqual(z80.flags.contains(.c), true)
-        XCTAssertEqual(z80.flags.contains(.h) || z80.flags.contains(.n), false)
+        XCTAssertTrue(z80.flags.contains(.c))
+        XCTAssertFalse(z80.flags.contains(.h))
+        XCTAssertFalse(z80.flags.contains(.n))
     }
 
     func testRLC_r() // RLC r
@@ -1005,7 +1014,8 @@ class Z80InstructionTests: XCTestCase
         executeInstructions([0xcb, 0x05])
         XCTAssertEqual(z80.flags.contains(.c), true)
         XCTAssertEqual(z80.l, 0x11)
-        XCTAssertEqual(z80.flags.contains(.h) || z80.flags.contains(.n), false)
+        XCTAssertFalse(z80.flags.contains(.h))
+        XCTAssertFalse(z80.flags.contains(.n))
     }
 
     func testRLC_pHL() // RLC (HL)

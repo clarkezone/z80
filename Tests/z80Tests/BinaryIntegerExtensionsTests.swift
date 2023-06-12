@@ -18,6 +18,7 @@ final class BinaryIntegerExtensionsTests: XCTestCase {
 
     func testTwosComplement() {
         XCTAssertEqual(UInt8(0).twosComplement, 0)
+        XCTAssertEqual(UInt8(0x06).twosComplement, 6)
         XCTAssertEqual(UInt8(0xFF).twosComplement, -1)
         XCTAssertEqual(UInt8(0x7F).twosComplement, 127)
         XCTAssertEqual(UInt8(0x80).twosComplement, -128)

@@ -666,7 +666,7 @@ public struct Z80 {
         flags.set(.f5, basedOn: result.isBitSet(5))
         flags.set(.f3, basedOn: result.isBitSet(3))
         flags.set(.pv, basedOn: result.isParity())
-        flags.remove([.n, .c])
+        flags.remove([.h, .n, .c])
 
         tStates += 4
 
@@ -757,7 +757,7 @@ public struct Z80 {
         // rotates register r to the left
         // bit 7 is copied to carry and to bit 0
         flags.set(.c, basedOn: value.isSignedBitSet())
-        var result: UInt8 = value << 1
+        var result: UInt8 = value &<< 1
         if flags.contains(.c) { result.setBit(0) }
 
         flags.set(.f5, basedOn: result.isBitSet(5))
@@ -787,7 +787,7 @@ public struct Z80 {
     /// Rotate Right Circular
     mutating func RRC(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(0))
-        var result: UInt8 = value >> 1
+        var result: UInt8 = value &>> 1
         if flags.contains(.c) { result.setBit(7) }
 
         flags.set(.f5, basedOn: result.isBitSet(5))
@@ -803,7 +803,7 @@ public struct Z80 {
     /// Rotate Right Circular Accumulator
     mutating func RRCA() {
         flags.set(.c, basedOn: a.isBitSet(0))
-        a >>= 1
+        a &>>= 1
         if flags.contains(.c) { a.setBit(7) }
 
         flags.set(.f5, basedOn: a.isBitSet(5))
@@ -819,10 +819,11 @@ public struct Z80 {
         // rotates register r to the left, through carry.
         // carry becomes the LSB of the new r
 
+        let carryBitInitiallySet = flags.contains(.c)
         flags.set(.c, basedOn: value.isSignedBitSet())
-        var result: UInt8 = value << 1
+        var result: UInt8 = value &<< 1
 
-        if flags.contains(.c) { result.setBit(0) }
+        if carryBitInitiallySet { result.setBit(0) }
 
         flags.set(.s, basedOn: result.isSignedBitSet())
         flags.setZeroFlag(basedOn: result)
@@ -839,10 +840,11 @@ public struct Z80 {
         // rotates register r to the left, through carry.
         // carry becomes the LSB of the new r
 
+        let carryBitInitiallySet = flags.contains(.c)
         flags.set(.c, basedOn: a.isSignedBitSet())
-        a <<= 1
+        a &<<= 1
 
-        if flags.contains(.c) { a.setBit(0) }
+        if carryBitInitiallySet { a.setBit(0) }
 
         flags.set(.f5, basedOn: a.isBitSet(5))
         flags.set(.f3, basedOn: a.isBitSet(3))
@@ -854,10 +856,12 @@ public struct Z80 {
 
     /// Rotate Right
     mutating func RR(_ value: UInt8) -> UInt8 {
-        flags.set(.c, basedOn: value.isSignedBitSet())
-        var result: UInt8 = value >> 1
+        let carryBitInitiallySet = flags.contains(.c)
 
-        if flags.contains(.c) { result.setBit(7) }
+        flags.set(.c, basedOn: value.isSignedBitSet())
+        var result: UInt8 = value &>> 1
+
+        if carryBitInitiallySet { result.setBit(7) }
 
         flags.set(.s, basedOn: result.isSignedBitSet())
         flags.setZeroFlag(basedOn: result)
@@ -871,10 +875,11 @@ public struct Z80 {
 
     /// Rotate Right Accumulator
     mutating func RRA() {
-        flags.set(.c, basedOn: a.isSignedBitSet())
-        a >>= 1
+        let carryBitInitiallySet = flags.contains(.c)
+        flags.set(.c, basedOn: a.isBitSet(0))
+        a &>>= 1
 
-        if flags.contains(.c) {
+        if carryBitInitiallySet {
             a.setBit(7)
         }
 
@@ -889,7 +894,7 @@ public struct Z80 {
     /// Shift Left Arithmetic
     mutating func SLA(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(7))
-        let result: UInt8 = value << 1
+        let result: UInt8 = value &<< 1
 
         flags.set(.f5, basedOn: result.isBitSet(5))
         flags.set(.f3, basedOn: result.isBitSet(3))
@@ -905,7 +910,7 @@ public struct Z80 {
     /// Shift Right Arithmetic
     mutating func SRA(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(0))
-        var result: UInt8 = value >> 1
+        var result: UInt8 = value &>> 1
 
         if value.isSignedBitSet() { result.setBit(7) }
 
@@ -923,7 +928,7 @@ public struct Z80 {
     /// Shift Left Logical
     mutating func SLL(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(7))
-        var result: UInt8 = value << 1
+        var result: UInt8 = value &<< 1
         result.setBit(0)
 
         flags.set(.f5, basedOn: result.isBitSet(5))
@@ -940,7 +945,7 @@ public struct Z80 {
     /// Shift Right Logical
     mutating func SRL(_ value: UInt8) -> UInt8 {
         flags.set(.c, basedOn: value.isBitSet(0))
-        var result: UInt8 = value >> 1
+        var result: UInt8 = value &>> 1
         result.resetBit(7)
 
         flags.set(.f5, basedOn: result.isBitSet(5))
@@ -959,11 +964,11 @@ public struct Z80 {
         // TODO: Overflow condition for this and RRD
         let byteAtHL = memory.readByte(hl)
 
-        var result: UInt8 = (byteAtHL & 0x0F) << 4
+        var result: UInt8 = (byteAtHL & 0x0F) &<< 4
         result += a & 0x0F
 
-        a = a & 0xF0
-        a += (byteAtHL & 0xF0) >> 4
+        a &= 0xF0
+        a += (byteAtHL & 0xF0) &>> 4
 
         memory.writeByte(hl, result)
 
@@ -982,10 +987,10 @@ public struct Z80 {
     mutating func RRD() {
         let byteAtHL = memory.readByte(hl)
 
-        var result: UInt8 = (a & 0x0F) << 4
-        result += (byteAtHL & 0xF0) >> 4
+        var result: UInt8 = (a & 0x0F) &<< 4
+        result += (byteAtHL & 0xF0) &>> 4
 
-        a = a & 0xF0
+        a &= 0xF0
         a += byteAtHL & 0x0F
 
         memory.writeByte(hl, result)
@@ -1002,11 +1007,11 @@ public struct Z80 {
     }
 
     mutating func displacedIX() -> UInt16 {
-        UInt16((Int(ix) + Int(getNextByte().twosComplement)) % 10000)
+        UInt16(truncatingIfNeeded: (Int(ix) + Int(getNextByte().twosComplement)))
     }
 
     mutating func displacedIY() -> UInt16 {
-        UInt16((Int(iy) + Int(getNextByte().twosComplement)) % 10000)
+        UInt16(truncatingIfNeeded: (Int(iy) + Int(getNextByte().twosComplement)))
     }
 
     // Bitwise operations
