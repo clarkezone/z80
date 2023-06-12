@@ -82,63 +82,63 @@ public struct Z80 {
     }
 
     var af: UInt16 {
-        get { UInt16.createWord(a, f) }
+        get { UInt16.formWord(a, f) }
         set { a = newValue.highByte; f = newValue.lowByte }
     }
 
     var af_: UInt16 {
-        get { UInt16.createWord(a_, f_) }
+        get { UInt16.formWord(a_, f_) }
         set { a_ = newValue.highByte; f_ = newValue.lowByte }
     }
 
     var bc: UInt16 {
-        get { UInt16.createWord(b, c) }
+        get { UInt16.formWord(b, c) }
         set { b = newValue.highByte; c = newValue.lowByte }
     }
 
     var bc_: UInt16 {
-        get { UInt16.createWord(b_, c_) }
+        get { UInt16.formWord(b_, c_) }
         set { b_ = newValue.highByte; c_ = newValue.lowByte }
     }
 
     var de: UInt16 {
-        get { UInt16.createWord(d, e) }
+        get { UInt16.formWord(d, e) }
         set { d = newValue.highByte; e = newValue.lowByte }
     }
 
     var de_: UInt16 {
-        get { UInt16.createWord(d_, e_) }
+        get { UInt16.formWord(d_, e_) }
         set { d_ = newValue.highByte; e_ = newValue.lowByte }
     }
 
     var hl: UInt16 {
-        get { UInt16.createWord(h, l) }
+        get { UInt16.formWord(h, l) }
         set { h = newValue.highByte; l = newValue.lowByte }
     }
 
     var hl_: UInt16 {
-        get { UInt16.createWord(h_, l_) }
+        get { UInt16.formWord(h_, l_) }
         set { h_ = newValue.highByte; l_ = newValue.lowByte }
     }
 
     var ixh: UInt8 {
         get { ix.highByte }
-        set { ix = UInt16.createWord(newValue, ixl) }
+        set { ix = UInt16.formWord(newValue, ixl) }
     }
 
     var ixl: UInt8 {
         get { ix.lowByte }
-        set { ix = UInt16.createWord(ixh, newValue) }
+        set { ix = UInt16.formWord(ixh, newValue) }
     }
 
     var iyh: UInt8 {
         get { iy.highByte }
-        set { iy = UInt16.createWord(newValue, iyl) }
+        set { iy = UInt16.formWord(newValue, iyl) }
     }
 
     var iyl: UInt8 {
         get { iy.lowByte }
-        set { iy = UInt16.createWord(iyh, newValue) }
+        set { iy = UInt16.formWord(iyh, newValue) }
     }
 
     struct Flags: OptionSet {
@@ -193,6 +193,42 @@ public struct Z80 {
         tStates = 0
     }
 
+    /// Generate a non-maskable interrupt.
+    ///
+    /// Per "The Undocumented Z80 Documented", shen a NMI is accepted, IFF1 is
+    /// reset. At the end of the routine, IFF1 must be restored (so the running
+    /// program is not affected). That’s why IFF2 is there; to keep a copy of
+    /// IFF1.
+    mutating func nonMaskableInterrupt() {
+        iff1 = false
+        r &+= 1
+        pc = 0x0066
+    }
+
+    /// Generate an interrupt.
+    mutating func maskableInterrupt() {
+        if iff1 {
+            r &+= 1
+            iff1 = false
+            iff2 = false
+            print("maskable interrupt: \(iff1) \(iff2) \(im)")
+            switch im {
+                case .im0:
+                    // Not used on the ZX Spectrum
+                    tStates += 13
+                case .im1:
+                    PUSH(pc)
+                    pc = 0x0038
+                    tStates += 13
+                case .im2:
+                    PUSH(pc)
+                    let address = UInt16.formWord(0, i)
+                    pc = memory.readWord(address)
+                    tStates += 19
+            }
+        }
+    }
+
     /// Read-ahead the byte at offset `offset` from the current `pc` register.
     ///
     /// This is useful for debugging, where we want to be able to see what's coming without affecting the program counter.
@@ -214,10 +250,6 @@ public struct Z80 {
         pc &+= 2
         return wordRead
     }
-
-    // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
-    // FLAG SETS
-    // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
 
     // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
     // INSTRUCTIONS
@@ -527,7 +559,7 @@ public struct Z80 {
     mutating func JR(_ jump: UInt8) {
         // jump is treated as signed byte from -128 to 127
         let vector = jump.twosComplement
-        pc = UInt16((Int(pc) + Int(vector)) % 0xFFFF)
+        pc = UInt16(truncatingIfNeeded: Int(pc) + Int(vector))
 
         tStates += 12
     }
@@ -572,7 +604,7 @@ public struct Z80 {
         sp &+= 1
         let highByte = memory.readByte(sp)
         sp &+= 1
-        return UInt16.createWord(highByte, lowByte)
+        return UInt16.formWord(highByte, lowByte)
     }
 
     mutating func EX_AFAFPrime() {
@@ -1007,11 +1039,11 @@ public struct Z80 {
     }
 
     mutating func displacedIX() -> UInt16 {
-        UInt16(truncatingIfNeeded: (Int(ix) + Int(getNextByte().twosComplement)))
+        UInt16(truncatingIfNeeded: Int(ix) + Int(getNextByte().twosComplement))
     }
 
     mutating func displacedIY() -> UInt16 {
-        UInt16(truncatingIfNeeded: (Int(iy) + Int(getNextByte().twosComplement)))
+        UInt16(truncatingIfNeeded: Int(iy) + Int(getNextByte().twosComplement))
     }
 
     // Bitwise operations
@@ -1184,6 +1216,215 @@ public struct Z80 {
                 return
         }
     }
+    
+    // Port operations and interrupts
+
+    // TODO: Is this used?
+    mutating func inSetFlags(_ register: UInt8) {
+        flags.set(.s, basedOn: register.isSignedBitSet())
+        flags.setZeroFlag(basedOn: register)
+        flags.remove([.h, .n])
+        flags.set(.pv, basedOn: register.isParity())
+        flags.set(.f5, basedOn: register.isBitSet(5))
+        flags.set(.f3, basedOn: register.isBitSet(3))
+    }
+
+    func OUT(portNumber: UInt16, value: UInt8) {
+      onPortWrite(portNumber, value);
+    }
+
+    func OUTA(portNumber: UInt16, value: UInt8) {
+      onPortWrite(portNumber, value);
+    }
+
+    mutating func INA(_ operandByte: UInt8) {
+      // The operand is placed on the bottom half (A0 through A7) of the address
+      // bus to select the I/O device at one of 256 possible ports. The contents
+      // of the Accumulator also appear on the top half (A8 through A15) of the
+      // address bus at this time.
+        let addressBus = UInt16.formWord(operandByte, a);
+      a = onPortRead(addressBus);
+    }
+
+    /// Input and Increment
+    mutating func INI() {
+      let memval = onPortRead(bc);
+      memory.writeByte(hl, memval);
+      hl &+= 1
+      b &-= 1
+
+        flags.set(.n, basedOn: memval.isBitSet(7))
+        flags.set(.z, basedOn: b == 0)
+        flags.set(.s, basedOn: b.isSignedBitSet())
+        flags.set(.f5, basedOn: b.isBitSet(5))
+        flags.set(.f3, basedOn: b.isBitSet(3))
+        flags.set(.c, basedOn: Int(memval) + Int(c &+ 1) > 0xFF)
+        flags.set(.h, basedOn: flags.contains(.c))
+        flags.set(.pv, basedOn: (UInt8(truncatingIfNeeded: (Int(memval) + Int(c &+ 1))) ^ b).isParity())
+
+      tStates += 16;
+    }
+
+    /// Output and Increment
+    mutating func OUTI() {
+      let memval = memory.readByte(hl);
+      onPortWrite(c, memval);
+      hl &+= 1
+      b &-= 1
+
+        flags.set(.n, basedOn: memval.isBitSet(7))
+        flags.setZeroFlag(basedOn: b)
+        flags.set(.s, basedOn: b.isSignedBitSet())
+        flags.set(.f3, basedOn: b.isBitSet(3))
+        flags.set(.f5, basedOn: b.isBitSet(5))
+        flags.set(.c, basedOn: Int(memval) + 1 > 0xFF)
+        flags.set(.h, basedOn: flags.contains(.c))
+      
+      fPV = isParity(((memval + l) & 0x07) ^ b);
+
+      tStates += 16;
+    }
+
+    /// Input and Decrement
+    mutating func IND() {
+      let memval = onPortRead(bc);
+      memory.writeByte(hl, memval);
+      hl = (hl - 1) % 0x10000;
+      b = (b - 1) % 0x100;
+
+      fN = isBitSet(memval, 7);
+      fZ = b == 0;
+      fS = isSign8(b);
+      f3 = isBitSet(b, 3);
+      f5 = isBitSet(b, 5);
+
+      fC = fH = memval + ((c - 1) & 0xFF) > 0xFF;
+      fPV = isParity(((memval + ((c - 1) & 0xFF)) & 0x07) ^ b);
+      tStates += 16;
+    }
+
+    /// Output and Decrement
+    mutating func  OUTD() {
+        let memval = memory.readByte(hl);
+      onPortWrite(c, memval);
+      hl = (hl - 1) % 0x10000;
+      b = (b - 1) % 0x100;
+
+      fN = true;
+      fN = isBitSet(memval, 7);
+      fZ = b == 0;
+      fS = isSign8(b);
+      f3 = isBitSet(b, 3);
+      f5 = isBitSet(b, 5);
+
+      fC = fH = memval + l > 0xFF;
+      fPV = isParity(((memval + l) & 0x07) ^ b);
+
+      tStates += 16;
+    }
+
+    /// Input, Increment and Repeat
+    mutating func  INIR() {
+        let memval = onPortRead(bc);
+      memory.writeByte(hl, memval);
+      hl = (hl + 1) % 0x10000;
+      b = (b - 1) % 0x100;
+
+      fN = isBitSet(memval, 7);
+      fZ = b == 0;
+      fS = isSign8(b);
+      f3 = isBitSet(b, 3);
+      f5 = isBitSet(b, 5);
+
+      fC = fH = memval + ((c + 1) & 0xFF) > 0xFF;
+      fPV = isParity(((memval + ((c + 1) & 0xFF)) & 0x07) ^ b);
+
+      if (b != 0) {
+        pc = (pc - 2) % 0x10000;
+        tStates += 21;
+      } else {
+        tStates += 16;
+      }
+    }
+
+    /// Output, Increment and Repeat
+    mutating func  OTIR() {
+        let memval = memory.readByte(hl);
+      onPortWrite(c, memval);
+
+      hl = (hl + 1) % 0x10000;
+      b = (b - 1) % 0x100;
+
+      fN = true;
+      fN = isBitSet(memval, 7);
+      fZ = b == 0;
+      fS = isSign8(b);
+      f3 = isBitSet(b, 3);
+      f5 = isBitSet(b, 5);
+
+      fC = fH = memval + l > 0xFF;
+      fPV = isParity(((memval + l) & 0x07) ^ b);
+
+      if (b != 0) {
+        pc = (pc - 2) % 0x10000;
+        tStates += 21;
+      } else {
+        tStates += 16;
+      }
+    }
+
+    /// Input, Decrement and Repeat
+    mutating func  INDR() {
+        let memval = onPortRead(bc);
+      memory.writeByte(hl, memval);
+      hl = (hl - 1) % 0x10000;
+      b = (b - 1) % 0x100;
+
+      fN = isBitSet(memval, 7);
+      fZ = b == 0;
+      fS = isSign8(b);
+      f3 = isBitSet(b, 3);
+      f5 = isBitSet(b, 5);
+
+      fC = fH = memval + ((c - 1) & 0xFF) > 0xFF;
+      fPV = isParity(((memval + ((c - 1) & 0xFF)) & 0x07) ^ b);
+
+      if (b != 0) {
+        pc = (pc - 2) % 0x10000;
+        tStates += 21;
+      } else {
+        tStates += 16;
+      }
+    }
+
+    /// Output, Decrement and Repeat
+    mutating func  OTDR() {
+      let memval = memory.readByte(hl);
+      onPortWrite(c, memval);
+
+      hl = (hl - 1) % 0x10000;
+      b = (b - 1) % 0x100;
+
+      fN = true;
+      fN = isBitSet(memval, 7);
+      fZ = b == 0;
+      fS = isSign8(b);
+      f3 = isBitSet(b, 3);
+      f5 = isBitSet(b, 5);
+
+      fC = fH = memval + l > 0xFF;
+      fPV = isParity(((memval + l) & 0x07) ^ b);
+
+      if (b != 0) {
+        pc = (pc - 2) % 0x10000;
+        tStates += 21;
+      } else {
+        tStates += 16;
+      }
+    }
+
+    
+    // MARK: Opcode Decoding
 
     mutating func DecodeCBOpcode() {
         let opCode = getNextByte()

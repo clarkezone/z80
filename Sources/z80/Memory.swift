@@ -46,7 +46,7 @@ struct Memory<AddressSize> where AddressSize : BinaryInteger {
     
     /// Read a single word from the given memory location.
     func readWord(_ addr: AddressSize) -> UInt16 {
-        UInt16.createWord(buffer[Int(addr)+1], buffer[Int(addr)])
+        UInt16.formWord(buffer[Int(addr)+1], buffer[Int(addr)])
     }
 
     /// Write a single byte to the given memory location.
