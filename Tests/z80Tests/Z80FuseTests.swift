@@ -15,12 +15,12 @@ class Z80FuseTests: XCTestCase {
 
     override func setUp() {
         // reinitialize memory and processor start state
-        z80 = Z80()
+        z80.memory.reset()
+        z80.reset()
     }
 
     func poke(_ address: UInt16, _ value: UInt8) { z80.memory.writeByte(address, value) }
     func peek(_ address: UInt16) -> UInt8 { z80.memory.readByte(address) }
-
 
     func loadRegisters(af: UInt16 = 0, bc: UInt16 = 0, de: UInt16 = 0, hl: UInt16 = 0, af_: UInt16 = 0, bc_: UInt16 = 0, de_: UInt16 = 0, hl_: UInt16 = 0, ix: UInt16 = 0, iy: UInt16 = 0, sp: UInt16 = 0, pc: UInt16 = 0) {
         z80.af = af
@@ -66,8 +66,6 @@ class Z80FuseTests: XCTestCase {
         XCTAssertEqual(z80.iff2, iff2, "Register IFF2 mismatch")
         XCTAssertEqual(z80.tStates, tStates, "tStates mismatch")
     }
-    
-    
     
     // Test instruction 01 | LD BC, **
     func test_01() {

@@ -29,18 +29,18 @@ let extendedCodes: [UInt8] = [
 
 public struct Z80 {
     var memory: Memory<UInt16>
-    
+
     /// Callback for a port read (IN instruction).
     ///
     /// This should be used by an emulator to handle peripherals or ULA access,
     /// including keyboard or storage input.
-    var onPortRead: PortReadCallback? = nil
+    var onPortRead: PortReadCallback?
 
     /// Callback for a port write (OUT instruction).
     ///
     /// This should be used by an emulator to handle peripherals or ULA access,
     /// such as a printer or storage output.
-    var onPortWrite: PortWriteCallback? = nil
+    var onPortWrite: PortWriteCallback?
 
     // Core registers
     var a: UInt8 = 0xFF, f: UInt8 = 0xFF
@@ -84,13 +84,12 @@ public struct Z80 {
 
     /// Whether the processor is halted or not
     var halt = false
-    
+
     typealias PortReadCallback = (UInt16) -> UInt8
     typealias PortWriteCallback = (UInt16, UInt8) -> ()
 
     func defaultPortReadFunction(_ port: UInt16) -> UInt8 { port.highByte }
     func defaultPortWriteFunction(_ addr: UInt16, _ value: UInt8) {}
-
 
     init(memory: Memory<UInt16> = Memory(sizeInBytes: 65536)) {
         self.memory = memory
@@ -907,7 +906,7 @@ public struct Z80 {
     mutating func RR(_ value: UInt8) -> UInt8 {
         let carryBitInitiallySet = flags.contains(.c)
 
-        flags.set(.c, basedOn: value.isSignedBitSet())
+        flags.set(.c, basedOn: value.isBitSet(0))
         var result: UInt8 = value &>> 1
 
         if carryBitInitiallySet { result.setBit(7) }
@@ -1233,7 +1232,7 @@ public struct Z80 {
                 return
         }
     }
-    
+
     // Port operations and interrupts
 
     // TODO: Is this used?
@@ -1247,28 +1246,28 @@ public struct Z80 {
     }
 
     func OUT(portNumber: UInt16, value: UInt8) {
-      onPortWrite!(portNumber, value);
+        onPortWrite!(portNumber, value)
     }
 
     func OUTA(portNumber: UInt16, value: UInt8) {
-      onPortWrite!(portNumber, value);
+        onPortWrite!(portNumber, value)
     }
 
     mutating func INA(_ operandByte: UInt8) {
-      // The operand is placed on the bottom half (A0 through A7) of the address
-      // bus to select the I/O device at one of 256 possible ports. The contents
-      // of the Accumulator also appear on the top half (A8 through A15) of the
-      // address bus at this time.
-        let addressBus = UInt16.formWord(operandByte, a);
-      a = onPortRead!(addressBus);
+        // The operand is placed on the bottom half (A0 through A7) of the address
+        // bus to select the I/O device at one of 256 possible ports. The contents
+        // of the Accumulator also appear on the top half (A8 through A15) of the
+        // address bus at this time.
+        let addressBus = UInt16.formWord(operandByte, a)
+        a = onPortRead!(addressBus)
     }
 
     /// Input and Increment
     mutating func INI() {
-      let memval = onPortRead!(bc);
-      memory.writeByte(hl, memval);
-      hl &+= 1
-      b &-= 1
+        let memval = onPortRead!(bc)
+        memory.writeByte(hl, memval)
+        hl &+= 1
+        b &-= 1
 
         flags.set(.n, basedOn: memval.isBitSet(7))
         flags.set(.z, basedOn: b == 0)
@@ -1277,17 +1276,17 @@ public struct Z80 {
         flags.set(.f3, basedOn: b.isBitSet(3))
         flags.set(.c, basedOn: Int(memval) + Int(c &+ 1) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-        flags.set(.pv, basedOn: (UInt8(truncatingIfNeeded: (Int(memval) + Int(c &+ 1))) ^ b).isParity())
+        flags.set(.pv, basedOn: (UInt8(truncatingIfNeeded: Int(memval) + Int(c &+ 1)) ^ b).isParity())
 
-      tStates += 16;
+        tStates += 16
     }
 
     /// Output and Increment
     mutating func OUTI() {
-      let memval = memory.readByte(hl);
-      onPortWrite!(bc, memval);
-      hl &+= 1
-      b &-= 1
+        let memval = memory.readByte(hl)
+        onPortWrite!(bc, memval)
+        hl &+= 1
+        b &-= 1
 
         flags.set(.n, basedOn: memval.isBitSet(7))
         flags.setZeroFlag(basedOn: b)
@@ -1296,18 +1295,18 @@ public struct Z80 {
         flags.set(.f5, basedOn: b.isBitSet(5))
         flags.set(.c, basedOn: Int(memval) + 1 > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-        flags.set(.pv, basedOn: ((UInt8((Int(memval) + Int(l)) & 0x07)) ^ b).isParity())
+        flags.set(.pv, basedOn: (UInt8((Int(memval) + Int(l)) & 0x07) ^ b).isParity())
 
-      tStates += 16;
+        tStates += 16
     }
 
     /// Input and Decrement
     mutating func IND() {
-      let memval = onPortRead!(bc);
-      memory.writeByte(hl, memval);
-      hl &-= 1
-      b &-= 1
-        
+        let memval = onPortRead!(bc)
+        memory.writeByte(hl, memval)
+        hl &-= 1
+        b &-= 1
+
         flags.set(.n, basedOn: memval.isBitSet(7))
         flags.setZeroFlag(basedOn: b)
         flags.set(.s, basedOn: b.isSignedBitSet())
@@ -1316,15 +1315,15 @@ public struct Z80 {
         flags.set(.c, basedOn: Int(memval) + Int(c) - 1 > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
         flags.set(.pv, basedOn: (((memval &+ ((c &- 1) & 0xFF)) & 0x07) ^ b).isParity())
-      tStates += 16;
+        tStates += 16
     }
 
     /// Output and Decrement
-    mutating func  OUTD() {
-        let memval = memory.readByte(hl);
-      onPortWrite!(bc, memval);
-      hl &-= 1
-      b &-= 1
+    mutating func OUTD() {
+        let memval = memory.readByte(hl)
+        onPortWrite!(bc, memval)
+        hl &-= 1
+        b &-= 1
 
         flags.set(.n, basedOn: memval.isBitSet(7))
         flags.setZeroFlag(basedOn: b)
@@ -1334,16 +1333,16 @@ public struct Z80 {
         flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
         flags.set(.pv, basedOn: (((memval &+ l) & 0x07) ^ b).isParity())
-        
-      tStates += 16;
+
+        tStates += 16
     }
 
     /// Input, Increment and Repeat
-    mutating func  INIR() {
-        let memval = onPortRead!(bc);
-      memory.writeByte(hl, memval);
-      hl &+= 1
-      b &-= 1
+    mutating func INIR() {
+        let memval = onPortRead!(bc)
+        memory.writeByte(hl, memval)
+        hl &+= 1
+        b &-= 1
 
         flags.set(.n, basedOn: memval.isBitSet(7))
         flags.setZeroFlag(basedOn: b)
@@ -1354,21 +1353,21 @@ public struct Z80 {
         flags.set(.h, basedOn: flags.contains(.c))
         flags.set(.pv, basedOn: (((memval &+ ((c &+ 1) & 0xFF)) & 0x07) ^ b).isParity())
 
-      if (b != 0) {
-        pc &-= 2
-        tStates += 21;
-      } else {
-        tStates += 16;
-      }
+        if b != 0 {
+            pc &-= 2
+            tStates += 21
+        } else {
+            tStates += 16
+        }
     }
 
     /// Output, Increment and Repeat
-    mutating func  OTIR() {
-        let memval = memory.readByte(hl);
-      onPortWrite!(bc, memval);
+    mutating func OTIR() {
+        let memval = memory.readByte(hl)
+        onPortWrite!(bc, memval)
 
-      hl &+= 1
-      b &-= 1
+        hl &+= 1
+        b &-= 1
 
         flags.set(.n, basedOn: memval.isBitSet(7))
         flags.setZeroFlag(basedOn: b)
@@ -1380,20 +1379,20 @@ public struct Z80 {
 
         flags.set(.pv, basedOn: (((memval + l) & 0x07) ^ b).isParity())
 
-      if (b != 0) {
-        pc &-= 2
-        tStates += 21;
-      } else {
-        tStates += 16;
-      }
+        if b != 0 {
+            pc &-= 2
+            tStates += 21
+        } else {
+            tStates += 16
+        }
     }
 
     /// Input, Decrement and Repeat
-    mutating func  INDR() {
-        let memval = onPortRead!(bc);
-      memory.writeByte(hl, memval);
-      hl &-= 1
-      b &-= 1
+    mutating func INDR() {
+        let memval = onPortRead!(bc)
+        memory.writeByte(hl, memval)
+        hl &-= 1
+        b &-= 1
 
         flags.set(.n, basedOn: memval.isBitSet(7))
         flags.setZeroFlag(basedOn: b)
@@ -1402,23 +1401,23 @@ public struct Z80 {
         flags.set(.f5, basedOn: b.isBitSet(5))
         flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-        flags.set(.pv, basedOn:  (((memval + ((c - 1) & 0xFF)) & 0x07) ^ b).isParity())
-        
-      if (b != 0) {
-        pc &-= 2
-        tStates += 21;
-      } else {
-        tStates += 16;
-      }
+        flags.set(.pv, basedOn: (((memval + ((c - 1) & 0xFF)) & 0x07) ^ b).isParity())
+
+        if b != 0 {
+            pc &-= 2
+            tStates += 21
+        } else {
+            tStates += 16
+        }
     }
 
     /// Output, Decrement and Repeat
-    mutating func  OTDR() {
-      let memval = memory.readByte(hl);
-      onPortWrite!(bc, memval);
+    mutating func OTDR() {
+        let memval = memory.readByte(hl)
+        onPortWrite!(bc, memval)
 
-      hl &-= 1
-      b &-= 1
+        hl &-= 1
+        b &-= 1
 
         flags.set(.n, basedOn: memval.isBitSet(7))
         flags.setZeroFlag(basedOn: b)
@@ -1427,17 +1426,16 @@ public struct Z80 {
         flags.set(.f5, basedOn: b.isBitSet(5))
         flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-        flags.set(.pv, basedOn: (UInt8(((Int(memval) + Int(l)) & 0x07)) ^ b).isParity())
+        flags.set(.pv, basedOn: (UInt8((Int(memval) + Int(l)) & 0x07) ^ b).isParity())
 
-      if (b != 0) {
-        pc &-= 2
-        tStates += 21;
-      } else {
-        tStates += 16;
-      }
+        if b != 0 {
+            pc &-= 2
+            tStates += 21
+        } else {
+            tStates += 16
+        }
     }
 
-    
     // MARK: Opcode Decoding
 
     mutating func DecodeCBOpcode() {
@@ -2050,16 +2048,16 @@ public struct Z80 {
         r += 1
 
         switch opCode {
-//        // IN B, (C)
-//        case 0x40:
-//          b = onPortRead(bc);
-//          _inSetFlags(b);
-//          tStates += 12;
+            // IN B, (C)
+            case 0x40:
+                b = onPortRead!(bc)
+                inSetFlags(b)
+                tStates += 12
 
-//        // OUT (C), B
-//        case 0x41:
-//          OUT(c, b);
-//          tStates += 12;
+            // OUT (C), B
+            case 0x41:
+                OUT(portNumber: UInt16(c), value: b)
+                tStates += 12
 
             // SBC HL, BC
             case 0x42:
@@ -2088,17 +2086,17 @@ public struct Z80 {
             case 0x47:
                 i = a
                 tStates += 9
-//
-//        // IN C, (C)
-//        case 0x48:
-//          c = onPortRead(bc);
-//          _inSetFlags(c);
-//          tStates += 12;
-//
-//        // OUT C, (C)
-//        case 0x49:
-//          OUT(c, c);
-//          tStates += 12;
+
+            // IN C, (C)
+            case 0x48:
+                c = onPortRead!(bc)
+                inSetFlags(c)
+                tStates += 12
+
+            // OUT C, (C)
+            case 0x49:
+                OUT(portNumber: UInt16(c), value: c)
+                tStates += 12
 
             // ADC HL, BC
             case 0x4A:
@@ -2120,16 +2118,16 @@ public struct Z80 {
                 r = a
                 tStates += 9
 
-//        // IN D, (C)
-//        case 0x50:
-//          d = onPortRead(bc);
-//          _inSetFlags(d);
-//          tStates += 12;
-//
-//        // OUT (C), D
-//        case 0x51:
-//          OUT(c, d);
-//          tStates += 12;
+            // IN D, (C)
+            case 0x50:
+                d = onPortRead!(bc)
+                inSetFlags(d)
+                tStates += 12
+
+            // OUT (C), D
+            case 0x51:
+                OUT(portNumber: UInt16(c), value: d)
+                tStates += 12
 
             // SBC HL, DE
             case 0x52:
@@ -2156,16 +2154,16 @@ public struct Z80 {
                 flags.set(.pv, basedOn: iff2)
                 tStates += 9
 
-//        // IN E, (C)
-//        case 0x58:
-//          e = onPortRead(bc);
-//          _inSetFlags(e);
-//          tStates += 12;
-//
-//        // OUT (C), E
-//        case 0x59:
-//          OUT(c, e);
-//          tStates += 12;
+            // IN E, (C)
+            case 0x58:
+                e = onPortRead!(bc)
+                inSetFlags(e)
+                tStates += 12
+
+            // OUT (C), E
+            case 0x59:
+                OUT(portNumber: UInt16(c), value: e)
+                tStates += 12
 
             // ADC HL, DE
             case 0x5A:
@@ -2191,16 +2189,16 @@ public struct Z80 {
                 flags.set(.pv, basedOn: iff2)
                 tStates += 9
 
-//        // IN H, (C)
-//        case 0x60:
-//          h = onPortRead(bc);
-//          _inSetFlags(h);
-//          tStates += 12;
-//
-//        // OUT (C), H
-//        case 0x61:
-//          OUT(c, h);
-//          tStates += 12;
+            // IN H, (C)
+            case 0x60:
+                h = onPortRead!(bc)
+                inSetFlags(h)
+                tStates += 12
+
+            // OUT (C), H
+            case 0x61:
+                OUT(portNumber: UInt16(c), value: h)
+                tStates += 12
 
             // SBC HL, HL
             case 0x62:
@@ -2215,16 +2213,16 @@ public struct Z80 {
             case 0x67:
                 RRD()
 
-//        // IN L, (C)
-//        case 0x68:
-//          l = onPortRead(bc);
-//          _inSetFlags(l);
-//          tStates += 12;
-//
-//        // OUT (C), L
-//        case 0x69:
-//          OUT(c, l);
-//          tStates += 12;
+            // IN L, (C)
+            case 0x68:
+                l = onPortRead!(bc)
+                inSetFlags(l)
+                tStates += 12
+
+            // OUT (C), L
+            case 0x69:
+                OUT(portNumber: UInt16(c), value: l)
+                tStates += 12
 
             // ADC HL, HL
             case 0x6A:
@@ -2240,15 +2238,16 @@ public struct Z80 {
             case 0x6F:
                 RLD()
 
-//        // IN (C)
-//        case 0x70:
-//          onPortRead(bc);
-//          tStates += 12;
-//
-//        // OUT (C), 0
-//        case 0x71:
-//          OUT(c, 0);
-//          tStates += 12;
+            // IN (C)
+            case 0x70:
+                // TODO: Check this shouldn't go to c
+                _ = onPortRead!(bc)
+                tStates += 12
+
+            // OUT (C), 0
+            case 0x71:
+                OUT(portNumber: UInt16(c), value: 0)
+                tStates += 12
 
             // SBC HL, SP
             case 0x72:
@@ -2259,16 +2258,16 @@ public struct Z80 {
                 memory.writeWord(getNextWord(), sp)
                 tStates += 20
 
-//        // IN A, (C)
-//        case 0x78:
-//          a = onPortRead(bc);
-//          _inSetFlags(a);
-//          tStates += 12;
-//
-//        // OUT (C), A
-//        case 0x79:
-//          OUT(c, a);
-//          tStates += 12;
+            // IN A, (C)
+            case 0x78:
+                a = onPortRead!(bc)
+                inSetFlags(a)
+                tStates += 12
+
+            // OUT (C), A
+            case 0x79:
+                OUT(portNumber: UInt16(c), value: a)
+                tStates += 12
 
             // ADC HL, SP
             case 0x7A:
@@ -2288,13 +2287,13 @@ public struct Z80 {
             case 0xA1:
                 CPI()
 
-//        // INI
-//        case 0xA2:
-//          INI();
-//
-//        // OUTI
-//        case 0xA3:
-//          OUTI();
+            // INI
+            case 0xA2:
+                INI()
+
+            // OUTI
+            case 0xA3:
+                OUTI()
 
             // LDD
             case 0xA8:
@@ -2304,13 +2303,13 @@ public struct Z80 {
             case 0xA9:
                 CPD()
 
-//        // IND
-//        case 0xAA:
-//          IND();
-//
-//        // OUTD
-//        case 0xAB:
-//          OUTD();
+            // IND
+            case 0xAA:
+                IND()
+
+            // OUTD
+            case 0xAB:
+                OUTD()
 
             // LDIR
             case 0xB0:
@@ -2320,13 +2319,13 @@ public struct Z80 {
             case 0xB1:
                 CPIR()
 
-//        // INIR
-//        case 0xB2:
-//          INIR();
-//
-//        // OTIR
-//        case 0xB3:
-//          OTIR();
+            // INIR
+            case 0xB2:
+                INIR()
+
+            // OTIR
+            case 0xB3:
+                OTIR()
 
             // LDDR
             case 0xB8:
@@ -2336,13 +2335,13 @@ public struct Z80 {
             case 0xB9:
                 CPDR()
 
-//        // INDR
-//        case 0xBA:
-//          INDR();
-//
-//        // OTDR
-//        case 0xBB:
-//          OTDR();
+            // INDR
+            case 0xBA:
+                INDR()
+
+            // OTDR
+            case 0xBB:
+                OTDR()
 
             default:
                 break
@@ -3036,7 +3035,7 @@ public struct Z80 {
             case 0x1A:
                 a = memory.readByte(de)
                 tStates += 7
-            //
+
             // DEC DE
             case 0x1B:
                 de &-= 1
@@ -3487,13 +3486,13 @@ public struct Z80 {
             case 0x75:
                 memory.writeByte(hl, l)
                 tStates += 7
-            //
-            //        // HALT
-            //        case 0x76:
-            //          tStates += 4;
-            //          halt = true;
-            //          pc--; // return to HALT, just keep executing it.
-            //
+
+            // HALT
+            case 0x76:
+                tStates += 4
+                halt = true
+                pc &-= 1 // return to HALT, just keep executing it.
+
             // LD (HL), A
             case 0x77:
                 memory.writeByte(hl, a)
@@ -3924,11 +3923,11 @@ public struct Z80 {
                     pc &+= 2
                 }
                 tStates += 10
-        //
-        //        // OUT (*), A
-        //        case 0xD3:
-        //          OUTA(getNextByte(), a);
-        //          tStates += 11;
+
+            // OUT (*), A
+            case 0xD3:
+                OUTA(portNumber: UInt16(getNextByte()), value: a)
+                tStates += 11
 
             // CALL NC, **
             case 0xD4:
@@ -3981,10 +3980,10 @@ public struct Z80 {
                 }
                 tStates += 10
 
-        //        // IN A, (*)
-        //        case 0xDB:
-        //          INA(getNextByte());
-        //          tStates += 11;
+            // IN A, (*)
+            case 0xDB:
+                INA(getNextByte())
+                tStates += 11
 
             // CALL C, **
             case 0xDC:
