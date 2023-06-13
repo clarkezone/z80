@@ -14,75 +14,82 @@
 //  Created by Tim Sneath on 6/6/23.
 //
 
-enum InterruptMode {
+public enum InterruptMode {
     case im0, im1, im2
 }
 
-
-
 public struct Z80 {
-    var memory: Memory<UInt16>
+    public var memory: Memory<UInt16>
 
     /// Callback for a port read (IN instruction).
     ///
     /// This should be used by an emulator to handle peripherals or ULA access,
     /// including keyboard or storage input.
-    var onPortRead: PortReadCallback?
+    public var onPortRead: PortReadCallback?
 
     /// Callback for a port write (OUT instruction).
     ///
     /// This should be used by an emulator to handle peripherals or ULA access,
     /// such as a printer or storage output.
-    var onPortWrite: PortWriteCallback?
+    public var onPortWrite: PortWriteCallback?
 
     // Core registers
-    var a: UInt8 = 0xFF, f: UInt8 = 0xFF
-    var b: UInt8 = 0xFF, c: UInt8 = 0xFF
-    var d: UInt8 = 0xFF, e: UInt8 = 0xFF
-    var h: UInt8 = 0xFF, l: UInt8 = 0xFF
-    var ix: UInt16 = 0xFFFF, iy: UInt16 = 0xFFFF
+    public var a: UInt8 = 0xFF, f: UInt8 = 0xFF
+    public var b: UInt8 = 0xFF, c: UInt8 = 0xFF
+    public var d: UInt8 = 0xFF, e: UInt8 = 0xFF
+    public var h: UInt8 = 0xFF, l: UInt8 = 0xFF
+    public var ix: UInt16 = 0xFFFF, iy: UInt16 = 0xFFFF
 
     // The alternate register set (A', F', B', C', D', E', H', L')
-    var a_: UInt8 = 0xFF, f_: UInt8 = 0xFF
-    var b_: UInt8 = 0xFF, c_: UInt8 = 0xFF
-    var d_: UInt8 = 0xFF, e_: UInt8 = 0xFF
-    var h_: UInt8 = 0xFF, l_: UInt8 = 0xFF
+    public var a_: UInt8 = 0xFF, f_: UInt8 = 0xFF
+    public var b_: UInt8 = 0xFF, c_: UInt8 = 0xFF
+    public var d_: UInt8 = 0xFF, e_: UInt8 = 0xFF
+    public var h_: UInt8 = 0xFF, l_: UInt8 = 0xFF
 
     /// Interrupt Page Address register (I).
-    var i: UInt8 = 0xFF
+    public var i: UInt8 = 0xFF
 
     /// Memory Refresh register (R).
-    var r: UInt8 = 0xFF
+    public var r: UInt8 = 0xFF
 
     /// Program Counter (PC).
-    var pc: UInt16 = 0
+    public var pc: UInt16 = 0
 
     /// Stack Pointer (SP).
-    var sp: UInt16 = 0xFFFF
+    public var sp: UInt16 = 0xFFFF
 
     /// Interrupt Flip-Flop (IFF1).
-    var iff1 = false
+    public var iff1 = false
 
     /// Interrupt Flip-Flop (IFF2).
     ///
     /// This is used to cache the value of the Interrupt Flag when a Non-Maskable
     /// Interrupt occurs.
-    var iff2 = false
+    public var iff2 = false
 
     /// Interrupt Mode (IM).
-    var im: InterruptMode = .im0
+    public var im: InterruptMode = .im0
 
     /// Number of  cycles that have occurred since the last clock reset.
-    var tStates = 0
+    public var tStates = 0
 
     /// Whether the processor is halted or not
-    var halt = false
+    public var halt = false
 
-    typealias PortReadCallback = (UInt16) -> UInt8
-    typealias PortWriteCallback = (UInt16, UInt8) -> ()
+    public typealias PortReadCallback = (UInt16) -> UInt8
+    public typealias PortWriteCallback = (UInt16, UInt8) -> ()
 
-    func defaultPortReadFunction(_ port: UInt16) -> UInt8 { port.highByte }
-    func defaultPortWriteFunction(_ addr: UInt16, _ value: UInt8) {}
+    public func defaultPortReadFunction(_ port: UInt16) -> UInt8 { port.highByte }
+    public func defaultPortWriteFunction(_ addr: UInt16, _ value: UInt8) {}
+
+    public init(memory: Memory<UInt16> = Memory(sizeInBytes: 65536),
+                portRead: @escaping PortReadCallback,
+                portWrite: @escaping PortWriteCallback)
+    {
+        self.memory = memory
+        self.onPortRead = portRead
+        self.onPortWrite = portWrite
+    }
 
     public init(memory: Memory<UInt16> = Memory(sizeInBytes: 65536)) {
         self.memory = memory
@@ -90,68 +97,72 @@ public struct Z80 {
         self.onPortWrite = defaultPortWriteFunction
     }
 
-    var af: UInt16 {
+    public var af: UInt16 {
         get { UInt16.formWord(a, f) }
         set { a = newValue.highByte; f = newValue.lowByte }
     }
 
-    var af_: UInt16 {
+    public var af_: UInt16 {
         get { UInt16.formWord(a_, f_) }
         set { a_ = newValue.highByte; f_ = newValue.lowByte }
     }
 
-    var bc: UInt16 {
+    public var bc: UInt16 {
         get { UInt16.formWord(b, c) }
         set { b = newValue.highByte; c = newValue.lowByte }
     }
 
-    var bc_: UInt16 {
+    public var bc_: UInt16 {
         get { UInt16.formWord(b_, c_) }
         set { b_ = newValue.highByte; c_ = newValue.lowByte }
     }
 
-    var de: UInt16 {
+    public var de: UInt16 {
         get { UInt16.formWord(d, e) }
         set { d = newValue.highByte; e = newValue.lowByte }
     }
 
-    var de_: UInt16 {
+    public var de_: UInt16 {
         get { UInt16.formWord(d_, e_) }
         set { d_ = newValue.highByte; e_ = newValue.lowByte }
     }
 
-    var hl: UInt16 {
+    public var hl: UInt16 {
         get { UInt16.formWord(h, l) }
         set { h = newValue.highByte; l = newValue.lowByte }
     }
 
-    var hl_: UInt16 {
+    public var hl_: UInt16 {
         get { UInt16.formWord(h_, l_) }
         set { h_ = newValue.highByte; l_ = newValue.lowByte }
     }
 
-    var ixh: UInt8 {
+    public var ixh: UInt8 {
         get { ix.highByte }
         set { ix = UInt16.formWord(newValue, ixl) }
     }
 
-    var ixl: UInt8 {
+    public var ixl: UInt8 {
         get { ix.lowByte }
         set { ix = UInt16.formWord(ixh, newValue) }
     }
 
-    var iyh: UInt8 {
+    public var iyh: UInt8 {
         get { iy.highByte }
         set { iy = UInt16.formWord(newValue, iyl) }
     }
 
-    var iyl: UInt8 {
+    public var iyl: UInt8 {
         get { iy.lowByte }
         set { iy = UInt16.formWord(iyh, newValue) }
     }
 
-    struct Flags: OptionSet {
-        var rawValue: UInt8
+    public struct Flags: OptionSet {
+        public init(rawValue: UInt8) {
+            self.rawValue = rawValue
+        }
+
+        public var rawValue: UInt8
 
         static let c = Flags(rawValue: 1 << 0) // carry
         static let n = Flags(rawValue: 1 << 1) // add/subtract
@@ -175,7 +186,7 @@ public struct Z80 {
         }
     }
 
-    var flags: Flags { get { Flags(rawValue: f) } set { f = newValue.rawValue }}
+    public var flags: Flags { get { Flags(rawValue: f) } set { f = newValue.rawValue }}
 
     /// Reset the Z80 to an initial power-on configuration.
     ///
@@ -274,7 +285,7 @@ public struct Z80 {
         0xA0, 0xA1, 0xA2, 0xA3, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAF,
         0xB0, 0xB1, 0xB2, 0xB3, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBF // add/sub/and/or
     ]
-    
+
     // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
     // INSTRUCTIONS
     // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
@@ -2915,7 +2926,7 @@ public struct Z80 {
         }
     }
 
-    mutating func executeNextInstruction() -> Bool {
+    public mutating func executeNextInstruction() -> Bool {
         halt = false
         let opCode = getNextByte()
 
