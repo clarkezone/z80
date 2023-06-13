@@ -5,7 +5,7 @@
 //  Created by Tim Sneath on 6/10/23.
 //
 
-extension BinaryInteger {
+public extension BinaryInteger {
     /// Return true if a given bit is set in a binary integer.
     func isBitSet(_ bit: Int) -> Bool { (self & (1 << bit)) == 1 << bit }
 
@@ -62,7 +62,7 @@ extension UInt16 {
 
 }
 
-extension UInt8 {
+public extension UInt8 {
     /// Extract the high four bits of a 8-bit value.
     var highNibble: UInt8 { UInt8((self & 0xF0) >> 4) }
     

@@ -15,47 +15,47 @@ import Foundation
 /// ```
 ///
 /// Note that this structure does not directly address read-only memory that might be mapped into the space.
-struct Memory<AddressSize> where AddressSize : BinaryInteger {
+public struct Memory<AddressSize> where AddressSize : BinaryInteger {
     private var buffer : [UInt8]
 
-    init(sizeInBytes: Int) {
+    public init(sizeInBytes: Int) {
         buffer = Array(repeating: 0, count: sizeInBytes)
     }
     
     /// Resets or clears the memory address space.
-    mutating func reset() {
+    public mutating func reset() {
         for idx in 0 ..< buffer.count {
             buffer[idx] = 0
         }
     }
     
     /// Load a list of byte data into memory, starting at origin.
-    mutating func load(origin: AddressSize, data: [UInt8]) {
+    public mutating func load(origin: AddressSize, data: [UInt8]) {
         for idx in 0 ..< data.count {
             buffer[Int(origin)+idx] = data[idx]
         }
     }
     
     /// Read a block of memory, starting at origin.
-    func read(origin: AddressSize, length: Int) -> ArraySlice<UInt8> {
+    public func read(origin: AddressSize, length: Int) -> ArraySlice<UInt8> {
         return buffer[Int(origin)...Int(origin)+length]
     }
 
     /// Read a single byte from the given memory location.
-    func readByte(_ addr: AddressSize) -> UInt8 { buffer[Int(addr)] }
+    public func readByte(_ addr: AddressSize) -> UInt8 { buffer[Int(addr)] }
     
     /// Read a single word from the given memory location.
-    func readWord(_ addr: AddressSize) -> UInt16 {
+    public func readWord(_ addr: AddressSize) -> UInt16 {
         UInt16.formWord(buffer[Int(addr)+1], buffer[Int(addr)])
     }
 
     /// Write a single byte to the given memory location.
-    mutating func writeByte(_ addr: AddressSize, _ value: UInt8) {
+    public mutating func writeByte(_ addr: AddressSize, _ value: UInt8) {
         buffer[Int(addr)] = value
     }
     
     /// Write a single word to the given memory location.
-    mutating func writeWord(_ addr: AddressSize, _ value: UInt16) {
+    public mutating func writeWord(_ addr: AddressSize, _ value: UInt16) {
         buffer[Int(addr)] = value.lowByte
         buffer[Int(addr)+1] = value.highByte
     }

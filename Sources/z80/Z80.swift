@@ -18,20 +18,7 @@ enum InterruptMode {
     case im0, im1, im2
 }
 
-// Opcodes that can be prefixed with DD or FD, but are the same as the
-// unprefixed versions (albeit slower).
-let extendedCodes: [UInt8] = [
-    0x04, 0x05, 0x06, 0x0C, 0x0D, 0x0E,
-    0x14, 0x15, 0x16, 0x1C, 0x1D, 0x1E,
-    0x3C, 0x3D, 0x3E, // inc/dec
-    0x40, 0x41, 0x42, 0x43, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4F,
-    0x50, 0x51, 0x52, 0x53, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5F, // ld
-    0x78, 0x79, 0x7A, 0x7B, 0x7F,
-    0x80, 0x81, 0x82, 0x83, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8F,
-    0x90, 0x91, 0x92, 0x93, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9F,
-    0xA0, 0xA1, 0xA2, 0xA3, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAF,
-    0xB0, 0xB1, 0xB2, 0xB3, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBF // add/sub/and/or
-]
+
 
 public struct Z80 {
     var memory: Memory<UInt16>
@@ -97,7 +84,7 @@ public struct Z80 {
     func defaultPortReadFunction(_ port: UInt16) -> UInt8 { port.highByte }
     func defaultPortWriteFunction(_ addr: UInt16, _ value: UInt8) {}
 
-    init(memory: Memory<UInt16> = Memory(sizeInBytes: 65536)) {
+    public init(memory: Memory<UInt16> = Memory(sizeInBytes: 65536)) {
         self.memory = memory
         self.onPortRead = defaultPortReadFunction
         self.onPortWrite = defaultPortWriteFunction
@@ -273,6 +260,21 @@ public struct Z80 {
         return wordRead
     }
 
+    // Opcodes that can be prefixed with DD or FD, but are the same as the
+    // unprefixed versions (albeit slower).
+    private let extendedCodes: [UInt8] = [
+        0x04, 0x05, 0x06, 0x0C, 0x0D, 0x0E,
+        0x14, 0x15, 0x16, 0x1C, 0x1D, 0x1E,
+        0x3C, 0x3D, 0x3E, // inc/dec
+        0x40, 0x41, 0x42, 0x43, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4F,
+        0x50, 0x51, 0x52, 0x53, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5F, // ld
+        0x78, 0x79, 0x7A, 0x7B, 0x7F,
+        0x80, 0x81, 0x82, 0x83, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8F,
+        0x90, 0x91, 0x92, 0x93, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9F,
+        0xA0, 0xA1, 0xA2, 0xA3, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAF,
+        0xB0, 0xB1, 0xB2, 0xB3, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBF // add/sub/and/or
+    ]
+    
     // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
     // INSTRUCTIONS
     // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
@@ -357,77 +359,77 @@ public struct Z80 {
     // Arithmetic operations
 
     /// Increment
-    private mutating func INC(_ originalValue: UInt8) -> UInt8 {
-        flags.set(.pv, basedOn: originalValue == 0x7F)
-        let newValue = originalValue &+ 1
-        flags.set(.h, basedOn: newValue.isBitSet(4) != originalValue.isBitSet(4))
-        flags.setZeroFlag(basedOn: newValue)
-        flags.set(.s, basedOn: newValue.isSignedBitSet())
-        flags.set(.f5, basedOn: newValue.isBitSet(5))
-        flags.set(.f3, basedOn: newValue.isBitSet(3))
+    private mutating func INC(_ value: UInt8) -> UInt8 {
+        flags.set(.pv, basedOn: value == 0x7F)
+        let result = value &+ 1
+        flags.set(.h, basedOn: result.isBitSet(4) != value.isBitSet(4))
+        flags.setZeroFlag(basedOn: result)
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
         flags.remove(.n)
 
         tStates += 4
 
-        return newValue
+        return result
     }
 
     /// Decrement
-    private mutating func DEC(_ originalValue: UInt8) -> UInt8 {
-        flags.set(.pv, basedOn: originalValue == 0x80)
-        let newValue = originalValue &- 1
-        flags.set(.h, basedOn: newValue.isBitSet(4) != originalValue.isBitSet(4))
-        flags.setZeroFlag(basedOn: newValue)
-        flags.set(.s, basedOn: newValue.isSignedBitSet())
-        flags.set(.f5, basedOn: newValue.isBitSet(5))
-        flags.set(.f3, basedOn: newValue.isBitSet(3))
+    private mutating func DEC(_ value: UInt8) -> UInt8 {
+        flags.set(.pv, basedOn: value == 0x80)
+        let result = value &- 1
+        flags.set(.h, basedOn: result.isBitSet(4) != value.isBitSet(4))
+        flags.setZeroFlag(basedOn: result)
+        flags.set(.s, basedOn: result.isSignedBitSet())
+        flags.set(.f5, basedOn: result.isBitSet(5))
+        flags.set(.f3, basedOn: result.isBitSet(3))
         flags.insert(.n)
 
         tStates += 4
 
-        return newValue
+        return result
     }
 
     /// Add with Carry (8-bit)
-    private mutating func ADC8(_ x: UInt8, _ y: UInt8) -> UInt8 {
-        ADD8(x, y, withCarry: flags.contains(.c))
+    private mutating func ADC(_ value: UInt8) {
+        ADD(value, withCarry: flags.contains(.c))
     }
 
     /// Add with Carry (16-bit)
-    private mutating func ADC16(_ xx: UInt16, _ yy: UInt16) -> UInt16 {
+    private mutating func ADC(_ value: UInt16) {
         // overflow in add only occurs when operand polarities are the same
-        let overflowCheck = xx.isSignedBitSet() == yy.isSignedBitSet()
+        let overflowCheck = hl.isSignedBitSet() == value.isSignedBitSet()
 
-        let result = ADD16(xx, yy, withCarry: flags.contains(.c))
+        let result = ADD(hl, value, withCarry: flags.contains(.c))
 
         // if polarity is now different then add caused an overflow
         if overflowCheck {
-            flags.set(.pv, basedOn: result.isSignedBitSet() != yy.isSignedBitSet())
+            flags.set(.pv, basedOn: result.isSignedBitSet() != value.isSignedBitSet())
         } else {
             flags.remove(.pv)
         }
         flags.set(.s, basedOn: result.isSignedBitSet())
         flags.setZeroFlag(basedOn: result)
-        return result
+        hl = result
     }
 
     /// Add (8-bit)
-    private mutating func ADD8(_ x: UInt8, _ y: UInt8, withCarry: Bool = false) -> UInt8 {
+    private mutating func ADD(_ value: UInt8, withCarry: Bool = false) {
         let carry = UInt8(withCarry ? 1 : 0)
-        let lowNibbleSum = x.lowNibble + y.lowNibble + carry
+        let lowNibbleSum = a.lowNibble + value.lowNibble + carry
         let halfCarry = (lowNibbleSum & 0x10) == 0x10
         flags.set(.h, basedOn: halfCarry)
 
         // overflow in add only occurs when operand polarities are the same
-        let overflowCheck = x.isSignedBitSet() == y.isSignedBitSet()
+        let overflowCheck = a.isSignedBitSet() == value.isSignedBitSet()
 
-        flags.set(.c, basedOn: Int(x) + Int(y) + Int(carry) > 0xFF)
-        let result: UInt8 = (x &+ y &+ carry)
+        flags.set(.c, basedOn: Int(a) + Int(value) + Int(carry) > 0xFF)
+        let result: UInt8 = (a &+ value &+ carry)
         flags.set(.s, basedOn: result.isSignedBitSet())
 
         // if polarity is now different then add caused an overflow
         if overflowCheck {
-            flags.set(.pv, basedOn: flags.contains(.s) != y.isSignedBitSet())
+            flags.set(.pv, basedOn: flags.contains(.s) != value.isSignedBitSet())
         } else {
             flags.remove(.pv)
         }
@@ -439,11 +441,11 @@ public struct Z80 {
 
         tStates += 4
 
-        return result
+        a = result
     }
 
     /// Add (16-bit)
-    private mutating func ADD16(_ xx: UInt16, _ yy: UInt16, withCarry: Bool = false) -> UInt16 {
+    private mutating func ADD(_ xx: UInt16, _ yy: UInt16, withCarry: Bool = false) -> UInt16 {
         let carry = withCarry ? 1 : 0
 
         flags.set(.h, basedOn: Int(xx & 0x0FFF) + Int(yy & 0x0FFF) + carry > 0x0FFF)
@@ -758,7 +760,6 @@ public struct Z80 {
     }
 
     private mutating func NEG() {
-        // TODO: Make twos complement return UInt8
         // returns two's complement of a
         flags.set(.pv, basedOn: a == 0x80)
         flags.set(.c, basedOn: a != 0x00)
@@ -1281,8 +1282,7 @@ public struct Z80 {
         flags.set(.f3, basedOn: b.isBitSet(3))
         flags.set(.c, basedOn: Int(memval) + Int(c &+ 1) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-        // TODO: Fix this
-        flags.set(.pv, basedOn: (UInt8(truncatingIfNeeded: Int(memval) + Int(c &+ 1)) ^ b).isParity())
+        flags.set(.pv, basedOn: (((memval &+ (c &+ 1)) & 0x07) ^ b).isParity())
 
         tStates += 16
     }
@@ -1320,7 +1320,7 @@ public struct Z80 {
         flags.set(.f5, basedOn: b.isBitSet(5))
         flags.set(.c, basedOn: Int(memval) + Int(c) - 1 > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-        flags.set(.pv, basedOn: (((memval &+ ((c &- 1) & 0xFF)) & 0x07) ^ b).isParity())
+        flags.set(.pv, basedOn: (((memval &+ (c &- 1) & 0xFF) & 0x07) ^ b).isParity())
         tStates += 16
     }
 
@@ -1407,7 +1407,7 @@ public struct Z80 {
         flags.set(.f5, basedOn: b.isBitSet(5))
         flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-        flags.set(.pv, basedOn: (((memval &+ ((c - 1) & 0xFF)) & 0x07) ^ b).isParity())
+        flags.set(.pv, basedOn: (((memval &+ ((c &- 1) & 0xFF)) & 0x07) ^ b).isParity())
 
         if b != 0 {
             pc &-= 2
@@ -1432,7 +1432,7 @@ public struct Z80 {
         flags.set(.f5, basedOn: b.isBitSet(5))
         flags.set(.c, basedOn: Int(memval) + Int(l) > 0xFF)
         flags.set(.h, basedOn: flags.contains(.c))
-        flags.set(.pv, basedOn: (UInt8((Int(memval) + Int(l)) & 0x07) ^ b).isParity())
+        flags.set(.pv, basedOn: (((memval &+ l) & 0x07) ^ b).isParity())
 
         if b != 0 {
             pc &-= 2
@@ -1497,12 +1497,12 @@ public struct Z80 {
 
             // ADD IX, BC
             case 0x09:
-                ix = ADD16(ix, bc)
+                ix = ADD(ix, bc)
                 tStates += 4
 
             // ADD IX, DE
             case 0x19:
-                ix = ADD16(ix, de)
+                ix = ADD(ix, de)
                 tStates += 4
 
             // LD IX, **
@@ -1537,7 +1537,7 @@ public struct Z80 {
 
             // ADD IX, IX
             case 0x29:
-                ix = ADD16(ix, ix)
+                ix = ADD(ix, ix)
                 tStates += 4
 
             // LD IX, (**)
@@ -1584,7 +1584,7 @@ public struct Z80 {
 
             // ADD IX, SP
             case 0x39:
-                ix = ADD16(ix, sp)
+                ix = ADD(ix, sp)
                 tStates += 4
 
             // LD B, IXH
@@ -1777,32 +1777,32 @@ public struct Z80 {
 
             // ADD A, IXH
             case 0x84:
-                a = ADD8(a, ixh)
+                ADD(ixh)
                 tStates += 4
 
             // ADD A, IXL
             case 0x85:
-                a = ADD8(a, ixl)
+                ADD(ixl)
                 tStates += 4
 
             // ADD A, (IX+*)
             case 0x86:
-                a = ADD8(a, memory.readByte(displacedIX()))
+                ADD(memory.readByte(displacedIX()))
                 tStates += 15
 
             // ADC A, IXH
             case 0x8C:
-                a = ADC8(a, ixh)
+                ADC(ixh)
                 tStates += 4
 
             // ADC A, IXL
             case 0x8D:
-                a = ADC8(a, ixl)
+                ADC(ixl)
                 tStates += 4
 
             // ADC A, (IX+*)
             case 0x8E:
-                a = ADC8(a, memory.readByte(displacedIX()))
+                ADC(memory.readByte(displacedIX()))
                 tStates += 15
 
             // SUB IXH
@@ -2106,7 +2106,7 @@ public struct Z80 {
 
             // ADC HL, BC
             case 0x4A:
-                hl = ADC16(hl, bc)
+                ADC(bc)
                 tStates += 4
 
             // LD BC, (**)
@@ -2173,7 +2173,7 @@ public struct Z80 {
 
             // ADC HL, DE
             case 0x5A:
-                hl = ADC16(hl, de)
+                ADC(de)
                 tStates += 4
 
             // LD DE, (**)
@@ -2232,7 +2232,7 @@ public struct Z80 {
 
             // ADC HL, HL
             case 0x6A:
-                hl = ADC16(hl, hl)
+                ADC(hl)
                 tStates += 4
 
             // LD HL, (**)
@@ -2277,7 +2277,7 @@ public struct Z80 {
 
             // ADC HL, SP
             case 0x7A:
-                hl = ADC16(hl, sp)
+                ADC(sp)
                 tStates += 4
 
             // LD SP, (**)
@@ -2368,12 +2368,12 @@ public struct Z80 {
 
             // ADD IY, BC
             case 0x09:
-                iy = ADD16(iy, bc)
+                iy = ADD(iy, bc)
                 tStates += 4
 
             // ADD IY, DE
             case 0x19:
-                iy = ADD16(iy, de)
+                iy = ADD(iy, de)
                 tStates += 4
 
             // LD IY, **
@@ -2408,7 +2408,7 @@ public struct Z80 {
 
             // ADD IY, IY
             case 0x29:
-                iy = ADD16(iy, iy)
+                iy = ADD(iy, iy)
                 tStates += 4
 
             // LD IY, (**)
@@ -2455,7 +2455,7 @@ public struct Z80 {
 
             // ADD IY, SP
             case 0x39:
-                iy = ADD16(iy, sp)
+                iy = ADD(iy, sp)
                 tStates += 4
 
             // LD B, IYH
@@ -2648,32 +2648,32 @@ public struct Z80 {
 
             // ADD A, IYH
             case 0x84:
-                a = ADD8(a, iyh)
+                ADD(iyh)
                 tStates += 4
 
             // ADD A, IYL
             case 0x85:
-                a = ADD8(a, iyl)
+                ADD(iyl)
                 tStates += 4
 
             // ADD A, (IY+*)
             case 0x86:
-                a = ADD8(a, memory.readByte(displacedIY()))
+                ADD(memory.readByte(displacedIY()))
                 tStates += 15
 
             // ADC A, IYH
             case 0x8C:
-                a = ADC8(a, iyh)
+                ADC(iyh)
                 tStates += 4
 
             // ADC A, IYL
             case 0x8D:
-                a = ADC8(a, iyl)
+                ADC(iyl)
                 tStates += 4
 
             // ADC A, (IY+*)
             case 0x8E:
-                a = ADC8(a, memory.readByte(displacedIY()))
+                ADC(memory.readByte(displacedIY()))
                 tStates += 15
 
             // SUB IYH
@@ -2964,7 +2964,7 @@ public struct Z80 {
 
             // ADD HL, BC
             case 0x09:
-                hl = ADD16(hl, bc)
+                hl = ADD(hl, bc)
 
             // LD A, (BC)
             case 0x0A:
@@ -3035,7 +3035,7 @@ public struct Z80 {
 
             // ADD HL, DE
             case 0x19:
-                hl = ADD16(hl, de)
+                hl = ADD(hl, de)
 
             // LD A, (DE)
             case 0x1A:
@@ -3116,7 +3116,7 @@ public struct Z80 {
 
             // ADD HL, HL
             case 0x29:
-                hl = ADD16(hl, hl)
+                hl = ADD(hl, hl)
 
             // LD HL, (**)
             case 0x2A:
@@ -3200,7 +3200,7 @@ public struct Z80 {
 
             // ADD HL, SP
             case 0x39:
-                hl = ADD16(hl, sp)
+                hl = ADD(hl, sp)
 
             // LD A, (**)
             case 0x3A:
@@ -3545,69 +3545,69 @@ public struct Z80 {
 
             // ADD A, B
             case 0x80:
-                a = ADD8(a, b)
+                ADD(b)
 
             // ADD A, C
             case 0x81:
-                a = ADD8(a, c)
+                ADD(c)
 
             // ADD A, D
             case 0x82:
-                a = ADD8(a, d)
+                ADD(d)
 
             // ADD A, E
             case 0x83:
-                a = ADD8(a, e)
+                ADD(e)
 
             // ADD A, H
             case 0x84:
-                a = ADD8(a, h)
+                ADD(h)
 
             // ADD A, L
             case 0x85:
-                a = ADD8(a, l)
+                ADD(l)
 
             // ADD A, (HL)
             case 0x86:
-                a = ADD8(a, memory.readByte(hl))
+                ADD(memory.readByte(hl))
                 tStates += 3
 
             // ADD A, A
             case 0x87:
-                a = ADD8(a, a)
+                ADD(a)
 
             // ADC A, B
             case 0x88:
-                a = ADC8(a, b)
+                ADC(b)
 
             // ADC A, C
             case 0x89:
-                a = ADC8(a, c)
+                ADC(c)
 
             // ADC A, D
             case 0x8A:
-                a = ADC8(a, d)
+                ADC(d)
 
             // ADC A, E
             case 0x8B:
-                a = ADC8(a, e)
+                ADC(e)
 
             // ADC A, H
             case 0x8C:
-                a = ADC8(a, h)
+                ADC(h)
 
             // ADC A, L
             case 0x8D:
-                a = ADC8(a, l)
+                ADC(l)
 
             // ADC A, (HL)
             case 0x8E:
-                a = ADC8(a, memory.readByte(hl))
+                ADC(memory.readByte(hl))
                 tStates += 3
 
             // ADC A, A
             case 0x8F:
-                a = ADC8(a, a)
+                ADC(a)
 
             // SUB B
             case 0x90:
@@ -3851,7 +3851,7 @@ public struct Z80 {
 
             // ADD A, *
             case 0xC6:
-                a = ADD8(a, getNextByte())
+                ADD(getNextByte())
                 tStates += 3
 
             // RST 00h
@@ -3900,7 +3900,7 @@ public struct Z80 {
 
             // ADC A, *
             case 0xCE:
-                a = ADC8(a, getNextByte())
+                ADC(getNextByte())
                 tStates += 3
 
             // RST 08h
