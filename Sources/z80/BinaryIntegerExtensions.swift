@@ -42,7 +42,7 @@ public extension BinaryInteger {
     func isSignedBitSet() -> Bool { self.isBitSet(self.bitWidth - 1) }
 }
 
-extension UInt16 {
+public extension UInt16 {
     /// Extract the high byte of a 16-bit value, assuming little-endian representation.
     var highByte: UInt8 { UInt8((self & 0xFF00) >> 8) }
 
