@@ -1220,26 +1220,26 @@ public struct Z80 {
                 let register = b
                 b = callRotation(operation: operation, register: register)
             case 0x01:
-            let register = c
+                let register = c
                 c = callRotation(operation: operation, register: register)
             case 0x02:
-            let register = d
+                let register = d
                 d = callRotation(operation: operation, register: register)
             case 0x03:
-            let register = e
+                let register = e
                 e = callRotation(operation: operation, register: register)
             case 0x04:
-            let register = h
+                let register = h
                 h = callRotation(operation: operation, register: register)
             case 0x05:
-            let register = l
+                let register = l
                 l = callRotation(operation: operation, register: register)
             case 0x06:
-            let byteAtHL = memory.readByte(hl)
+                let byteAtHL = memory.readByte(hl)
                 let result = callRotation(operation: operation, register: byteAtHL)
                 memory.writeByte(hl, result)
             default: // case 0x07
-            let register = a
+                let register = a
                 a = callRotation(operation: operation, register: register)
         }
     }
@@ -1263,13 +1263,14 @@ public struct Z80 {
         onPortWrite!(portNumber, value)
     }
 
-    private mutating func INA(_ operandByte: UInt8) {
+    private func INA(_ operandByte: UInt8) -> UInt8 {
         // The operand is placed on the bottom half (A0 through A7) of the address
         // bus to select the I/O device at one of 256 possible ports. The contents
         // of the Accumulator also appear on the top half (A8 through A15) of the
         // address bus at this time.
         let addressBus = UInt16.formWord(a, operandByte)
-        a = onPortRead!(addressBus)
+        let result = onPortRead!(addressBus)
+        return result
     }
 
     /// Input and Increment
@@ -3992,7 +3993,7 @@ public struct Z80 {
 
             // IN A, (*)
             case 0xDB:
-                INA(getNextByte())
+                a = INA(getNextByte())
                 tStates += 11
 
             // CALL C, **

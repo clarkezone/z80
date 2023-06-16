@@ -1480,11 +1480,11 @@ public enum Disassembler {
 
         for _ in 0 ..< count {
             let remaining = instructions.count - idx
-            let instr = disassembleInstruction(Array(instructions[idx ..< idx+remaining]))
+            let instr = disassembleInstruction(Array(instructions[idx ..< idx + remaining]))
             let address = (pc + UInt16(idx)).toHex
             let paddedInstruction = instr.byteCode.padRight(toLength: 11) // ??_??_??_??
             result.append(
-                "[\(address)]  \(paddedInstruction)  \(instr.disassembly ?? "")\n")
+                "[\(address)]  \(paddedInstruction)  \(instr.disassembly)\n")
             idx += instr.length
         }
 
