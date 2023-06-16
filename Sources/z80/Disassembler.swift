@@ -16,7 +16,7 @@ public struct Instruction {
     public let byteCode: String
 
     /// The string representing the human-readable form of the instruction
-    public let disassembly: String?
+    public let disassembly: String
 }
 
 /// A simple disassembler for Z80 opcodes.
