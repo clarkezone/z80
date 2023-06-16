@@ -10,13 +10,13 @@ import Foundation
 ///// Represents a single Z80 assembly instruction
 public struct Instruction {
     /// The length of the opcode in bytes.
-    let length: Int
+    public let length: Int
 
     /// The hexadecimal string representing the instruction
-    let byteCode: String
+    public let byteCode: String
 
     /// The string representing the human-readable form of the instruction
-    let disassembly: String?
+    public let disassembly: String?
 }
 
 /// A simple disassembler for Z80 opcodes.
@@ -1278,7 +1278,7 @@ public enum Disassembler {
 
     /// This method swaps out displacement or address placeholders for the
     /// actual operand.
-    public static func replaceOperand(instruction: String, lowByte: UInt8, highByte: UInt8) -> String {
+    static func replaceOperand(instruction: String, lowByte: UInt8, highByte: UInt8) -> String {
         if instruction.contains("**") {
             let word = UInt16.formWord(lowByte, highByte).toHex.uppercased()
             return instruction.replacingOccurrences(of: "**", with: word)
@@ -1293,7 +1293,7 @@ public enum Disassembler {
     // Z80 instructions are never more than four bytes, including displacements.
     // This method uses the decode table above to translate instructions into
     // strings for debugging purposes.
-    private static func decodeInstruction(
+    static func decodeInstruction(
         _ inst1: UInt8,
         _ inst2: UInt8,
         _ inst3: UInt8,
@@ -1373,7 +1373,7 @@ public enum Disassembler {
 
     /// This helper method identifies the opcode length for a given instruction
     /// that is one to four bytes long and begins with inst1.
-    public static func calculateInstructionLength(
+    static func calculateInstructionLength(
         _ inst1: UInt8,
         _ inst2: UInt8,
         _ inst3: UInt8,
