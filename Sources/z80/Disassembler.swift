@@ -1464,8 +1464,6 @@ public enum Disassembler {
         for i in 0 ..< 4 {
             if i < length {
                 byteCode.append(instruction[i].toHex)
-            } else {
-                byteCode.append("  ")
             }
         }
 
@@ -1481,9 +1479,12 @@ public enum Disassembler {
         var idx = 0
 
         for _ in 0 ..< count {
-            let instr = disassembleInstruction(Array(instructions[idx ..< idx + 4]))
+            let remaining = instructions.count - idx
+            let instr = disassembleInstruction(Array(instructions[idx ..< idx+remaining]))
+            let address = (pc + UInt16(idx)).toHex
+            let paddedInstruction = instr.byteCode.padRight(toLength: 11) // ??_??_??_??
             result.append(
-                "[\((pc + UInt16(idx)).toHex)]  \(instr.byteCode)  \(instr.disassembly ?? "")\n")
+                "[\(address)]  \(paddedInstruction)  \(instr.disassembly ?? "")\n")
             idx += instr.length
         }
 

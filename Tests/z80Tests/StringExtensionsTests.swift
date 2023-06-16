@@ -14,4 +14,9 @@ final class StringExtensionsTests: XCTestCase {
         XCTAssertEqual(UInt8(0x0F).toBinary, "00001111")
         XCTAssertEqual(UInt16(0x0F0F).toBinary, "0000111100001111")
     }
+    
+    func testPadRight() {
+        XCTAssertEqual("foo".padRight(toLength: 6), "foo   ")
+        XCTAssertEqual("bar".padRight(toLength: 4, withPad: "_"), "bar_")
+    }
 }
