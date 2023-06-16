@@ -14,6 +14,10 @@
 //  Created by Tim Sneath on 6/6/23.
 //
 
+public enum Z80Error: Error {
+    case missingValue
+}
+
 public enum InterruptMode {
     case im0, im1, im2
 }
@@ -1189,65 +1193,54 @@ public struct Z80 {
         }
     }
 
-    private mutating func callRotation(operation: Int, register: inout UInt8) {
+    private mutating func callRotation(operation: Int, register: UInt8) -> UInt8 {
         switch operation {
             case 0x00:
-                register = RLC(register)
+                return RLC(register)
             case 0x01:
-                register = RRC(register)
+                return RRC(register)
             case 0x02:
-                register = RL(register)
+                return RL(register)
             case 0x03:
-                register = RR(register)
+                return RR(register)
             case 0x04:
-                register = SLA(register)
+                return SLA(register)
             case 0x05:
-                register = SRA(register)
+                return SRA(register)
             case 0x06:
-                register = SLL(register)
-            case 0x07:
-                register = SRL(register)
-            default:
-                return
+                return SLL(register)
+            default: // case 0x07:
+                return SRL(register)
         }
     }
 
     private mutating func rotate(operation: Int, register: Int) {
         switch register {
             case 0x00:
-                var register = b
-                callRotation(operation: operation, register: &register)
-                b = register
+                let register = b
+                b = callRotation(operation: operation, register: register)
             case 0x01:
-                var register = c
-                callRotation(operation: operation, register: &register)
-                c = register
+            let register = c
+                c = callRotation(operation: operation, register: register)
             case 0x02:
-                var register = d
-                callRotation(operation: operation, register: &register)
-                d = register
+            let register = d
+                d = callRotation(operation: operation, register: register)
             case 0x03:
-                var register = e
-                callRotation(operation: operation, register: &register)
-                e = register
+            let register = e
+                e = callRotation(operation: operation, register: register)
             case 0x04:
-                var register = h
-                callRotation(operation: operation, register: &register)
-                h = register
+            let register = h
+                h = callRotation(operation: operation, register: register)
             case 0x05:
-                var register = l
-                callRotation(operation: operation, register: &register)
-                l = register
+            let register = l
+                l = callRotation(operation: operation, register: register)
             case 0x06:
-                var byteAtHL = memory.readByte(hl)
-                callRotation(operation: operation, register: &byteAtHL)
-                memory.writeByte(hl, byteAtHL)
-            case 0x07:
-                var register = a
-                callRotation(operation: operation, register: &register)
-                a = register
-            default:
-                return
+            let byteAtHL = memory.readByte(hl)
+                let result = callRotation(operation: operation, register: byteAtHL)
+                memory.writeByte(hl, result)
+            default: // case 0x07
+            let register = a
+                a = callRotation(operation: operation, register: register)
         }
     }
 
