@@ -1451,7 +1451,7 @@ public struct Z80 {
 
     private mutating func DecodeCBOpcode() {
         let opCode = getNextByte()
-        r += 1
+        r &+= 1
 
         // first two bits of opCode determine function:
         switch opCode >> 6 {
@@ -2056,7 +2056,7 @@ public struct Z80 {
 
     private mutating func DecodeEDOpcode() {
         let opCode = getNextByte()
-        r += 1
+        r &+= 1
 
         switch opCode {
             // IN B, (C)
