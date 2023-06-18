@@ -1280,7 +1280,7 @@ public enum Disassembler {
     /// actual operand.
     static func replaceOperand(instruction: String, lowByte: UInt8, highByte: UInt8) -> String {
         if instruction.contains("**") {
-            let word = UInt16.formWord(lowByte, highByte).toHex.uppercased()
+            let word = UInt16.formWord(highByte: highByte, lowByte: lowByte).toHex.uppercased()
             return instruction.replacingOccurrences(of: "**", with: word)
         } else if instruction.contains("*") {
             let byte = lowByte.toHex.uppercased()

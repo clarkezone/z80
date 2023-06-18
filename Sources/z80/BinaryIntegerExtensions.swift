@@ -50,7 +50,7 @@ public extension UInt16 {
     var lowByte: UInt8 { UInt8(self & 0x00FF) }
 
     /// Create a new value from two bytes, assuming little-endian representation.
-    static func formWord(_ highByte: UInt8, _ lowByte: UInt8) -> UInt16 {
+    static func formWord(highByte: UInt8, lowByte: UInt8) -> UInt16 {
         (UInt16(highByte) << 8) + UInt16(lowByte)
     }
 

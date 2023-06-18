@@ -103,63 +103,63 @@ public class Z80 {
     }
 
     public var af: UInt16 {
-        get { UInt16.formWord(a, f) }
+        get { UInt16.formWord(highByte: a, lowByte: f) }
         set { a = newValue.highByte; f = newValue.lowByte }
     }
 
     public var af_: UInt16 {
-        get { UInt16.formWord(a_, f_) }
+        get { UInt16.formWord(highByte: a_, lowByte: f_) }
         set { a_ = newValue.highByte; f_ = newValue.lowByte }
     }
 
     public var bc: UInt16 {
-        get { UInt16.formWord(b, c) }
+        get { UInt16.formWord(highByte: b, lowByte: c) }
         set { b = newValue.highByte; c = newValue.lowByte }
     }
 
     public var bc_: UInt16 {
-        get { UInt16.formWord(b_, c_) }
+        get { UInt16.formWord(highByte: b_, lowByte: c_) }
         set { b_ = newValue.highByte; c_ = newValue.lowByte }
     }
 
     public var de: UInt16 {
-        get { UInt16.formWord(d, e) }
+        get { UInt16.formWord(highByte: d, lowByte: e) }
         set { d = newValue.highByte; e = newValue.lowByte }
     }
 
     public var de_: UInt16 {
-        get { UInt16.formWord(d_, e_) }
+        get { UInt16.formWord(highByte: d_, lowByte: e_) }
         set { d_ = newValue.highByte; e_ = newValue.lowByte }
     }
 
     public var hl: UInt16 {
-        get { UInt16.formWord(h, l) }
+        get { UInt16.formWord(highByte: h, lowByte: l) }
         set { h = newValue.highByte; l = newValue.lowByte }
     }
 
     public var hl_: UInt16 {
-        get { UInt16.formWord(h_, l_) }
+        get { UInt16.formWord(highByte: h_, lowByte: l_) }
         set { h_ = newValue.highByte; l_ = newValue.lowByte }
     }
 
     public var ixh: UInt8 {
         get { ix.highByte }
-        set { ix = UInt16.formWord(newValue, ixl) }
+        set { ix = UInt16.formWord(highByte: newValue, lowByte: ixl) }
     }
 
     public var ixl: UInt8 {
         get { ix.lowByte }
-        set { ix = UInt16.formWord(ixh, newValue) }
+        set { ix = UInt16.formWord(highByte: ixh, lowByte: newValue) }
     }
 
     public var iyh: UInt8 {
         get { iy.highByte }
-        set { iy = UInt16.formWord(newValue, iyl) }
+        set { iy = UInt16.formWord(highByte: newValue, lowByte:  iyl) }
     }
 
     public var iyl: UInt8 {
         get { iy.lowByte }
-        set { iy = UInt16.formWord(iyh, newValue) }
+        set { iy = UInt16.formWord(highByte: iyh,lowByte:  newValue) }
     }
 
     public struct Flags: OptionSet {
@@ -247,7 +247,7 @@ public class Z80 {
                     tStates += 13
                 case .im2:
                     PUSH(pc)
-                    let address = UInt16.formWord(0, i)
+                let address = UInt16.formWord(highByte: 0, lowByte: i)
                     pc = memory.readWord(address)
                     tStates += 19
             }
@@ -644,7 +644,7 @@ public class Z80 {
         sp &+= 1
         let highByte = memory.readByte(sp)
         sp &+= 1
-        return UInt16.formWord(highByte, lowByte)
+        return UInt16.formWord(highByte: highByte, lowByte: lowByte)
     }
 
     func EX_AFAFPrime() {
@@ -1269,7 +1269,7 @@ public class Z80 {
         // bus to select the I/O device at one of 256 possible ports. The contents
         // of the Accumulator also appear on the top half (A8 through A15) of the
         // address bus at this time.
-        let addressBus = UInt16.formWord(a, operandByte)
+        let addressBus = UInt16.formWord(highByte: a, lowByte: operandByte)
         let result = onPortRead(addressBus)
         return result
     }
