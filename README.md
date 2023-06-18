@@ -7,12 +7,10 @@ Originally intended for use with Cambridge, a ZX Spectrum emulator
 
 The Swift version of the emulator passes the comprehensive FUSE test
 suite, which contains 1356 tests that evaluate the correctness of both
-documented and undocumented instructions. <!-- It also passes `ZEXDOC`
-(sometimes referred to as `zexlax` test suite). -->
+documented and undocumented instructions. It also passes `ZEXDOC`
+(sometimes referred to as `zexlax` test suite).
 
 Not all undocumented registers or flags are implemented (e.g. the `W` register
 is not implemented).
 
-The emulator itself is licensed under the MIT license (see LICENSE). <!-- The
-`ZEXALL` and `ZEXDOC` test suites included with this emulator are licensed under
-GPL, per the separate license in that folder. -->
+The emulator itself is licensed under the MIT license (see LICENSE).
