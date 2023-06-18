@@ -10,7 +10,7 @@ import XCTest
 
 final class Z80RegisterTests: XCTestCase {
     func testBCRegisters() {
-        let z80 = Z80()
+        var z80 = Z80()
         z80.b = 0x01
         z80.c = 0x00
         XCTAssertEqual(z80.bc, 0x0100)
@@ -20,7 +20,7 @@ final class Z80RegisterTests: XCTestCase {
     }
 
     func testDERegisters() {
-        let z80 = Z80()
+        var z80 = Z80()
         z80.d = 0xc2
         z80.e = 0xd3
         XCTAssertEqual(z80.de, 0xc2d3)
@@ -30,7 +30,7 @@ final class Z80RegisterTests: XCTestCase {
     }
 
     func testHLRegisters() {
-        let z80 = Z80()
+        var z80 = Z80()
         z80.h = 0xe4
         z80.l = 0xf5
         XCTAssertEqual(z80.hl, 0xe4f5)
@@ -40,7 +40,7 @@ final class Z80RegisterTests: XCTestCase {
     }
 
     func testAFRegisters() {
-        let z80 = Z80()
+        var z80 = Z80()
         z80.a = 0x12
         z80.f = 0x34
         XCTAssertEqual(z80.af, 0x1234)
@@ -50,7 +50,7 @@ final class Z80RegisterTests: XCTestCase {
     }
 
     func testIXRegisters() {
-        let z80 = Z80()
+        var z80 = Z80()
         z80.ix = 0
         z80.ixh = 0x24
         z80.ixl = 0x68
@@ -61,7 +61,7 @@ final class Z80RegisterTests: XCTestCase {
     }
 
     func testIYRegisters() {
-        let z80 = Z80()
+        var z80 = Z80()
         z80.iy = 0
         z80.iyh = 0x2a
         z80.iyl = 0x6b
@@ -72,7 +72,7 @@ final class Z80RegisterTests: XCTestCase {
     }
 
     func testFlags() {
-        let z80 = Z80()
+        var z80 = Z80()
         z80.a = 0
         z80.f = 0
         z80.flags = [.z, .c]
