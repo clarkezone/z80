@@ -196,7 +196,7 @@ public struct Z80 {
     /// Reset the Z80 to an initial power-on configuration.
     ///
     /// Initial register states are set per section 2.4 of http://www.myquest.nl/z80undocumented/z80-documented-v0.91.pdf
-    mutating func reset() {
+    mutating public func reset() {
         af = 0xFFFF
         af_ = 0xFFFF
         bc = 0xFFFF
