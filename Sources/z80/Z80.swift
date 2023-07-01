@@ -32,13 +32,13 @@ public struct Z80 {
     ///
     /// This should be used by an emulator to handle peripherals or ULA access,
     /// including keyboard or storage input.
-    var onPortRead: PortReadCallback
+    //public var onPortRead: PortReadCallback
 
     /// Callback for a port write (OUT instruction).
     ///
     /// This should be used by an emulator to handle peripherals or ULA access,
     /// such as a printer or storage output.
-    var onPortWrite: PortWriteCallback
+    //public var onPortWrite: PortWriteCallback
 
     // Core registers
     public var a: UInt8 = 0xFF, f: UInt8 = 0xFF
@@ -84,12 +84,12 @@ public struct Z80 {
     public var halt = false
 
     public init(memory: Memory<UInt16>,
-                portRead: @escaping PortReadCallback,
-                portWrite: @escaping PortWriteCallback)
+                portRead: PortReadCallback,
+                portWrite: PortWriteCallback)
     {
         self.memory = memory
-        self.onPortRead = portRead
-        self.onPortWrite = portWrite
+        //self.onPortRead = portRead
+        //self.onPortWrite = portWrite
     }
 
     public init(memory: Memory<UInt16>) {
@@ -1256,27 +1256,31 @@ public struct Z80 {
         flags.set(.f3, basedOn: register.isBitSet(3))
     }
 
-    func OUT(portNumber: UInt16, value: UInt8) {
-        onPortWrite(portNumber, value)
+    func OUT(portNumber: UInt16, value: UInt8, portRead: PortReadCallback,
+             portWrite: PortWriteCallback) {
+        portWrite(portNumber, value)
     }
 
-    func OUTA(portNumber: UInt16, value: UInt8) {
-        onPortWrite(portNumber, value)
+    func OUTA(portNumber: UInt16, value: UInt8, portRead: PortReadCallback,
+              portWrite: PortWriteCallback) {
+        portWrite(portNumber, value)
     }
 
-    func INA(_ operandByte: UInt8) -> UInt8 {
+    func INA(_ operandByte: UInt8, portRead: PortReadCallback,
+             portWrite: PortWriteCallback) -> UInt8 {
         // The operand is placed on the bottom half (A0 through A7) of the address
         // bus to select the I/O device at one of 256 possible ports. The contents
         // of the Accumulator also appear on the top half (A8 through A15) of the
         // address bus at this time.
         let addressBus = UInt16.formWord(a, operandByte)
-        let result = onPortRead(addressBus)
+        let result = portRead(addressBus)
         return result
     }
 
     /// Input and Increment
-    mutating func INI() {
-        let memval = onPortRead(bc)
+    mutating func INI(portRead: PortReadCallback,
+                      portWrite: PortWriteCallback) {
+        let memval = portRead(bc)
         memory.writeByte(hl, memval)
         hl &+= 1
         b &-= 1
@@ -1294,9 +1298,10 @@ public struct Z80 {
     }
 
     /// Output and Increment
-    mutating func OUTI() {
+    mutating func OUTI(portRead: PortReadCallback,
+                       portWrite: PortWriteCallback) {
         let memval = memory.readByte(hl)
-        onPortWrite(bc, memval)
+        portWrite(bc, memval)
         hl &+= 1
         b &-= 1
 
@@ -1313,8 +1318,9 @@ public struct Z80 {
     }
 
     /// Input and Decrement
-    mutating func IND() {
-        let memval = onPortRead(bc)
+    mutating func IND(portRead: PortReadCallback,
+                      portWrite: PortWriteCallback) {
+        let memval = portRead(bc)
         memory.writeByte(hl, memval)
         hl &-= 1
         b &-= 1
@@ -1331,9 +1337,10 @@ public struct Z80 {
     }
 
     /// Output and Decrement
-    mutating func OUTD() {
+    mutating func OUTD(portRead: PortReadCallback,
+                       portWrite: PortWriteCallback) {
         let memval = memory.readByte(hl)
-        onPortWrite(bc, memval)
+        portWrite(bc, memval)
         hl &-= 1
         b &-= 1
 
@@ -1350,8 +1357,9 @@ public struct Z80 {
     }
 
     /// Input, Increment and Repeat
-    mutating func INIR() {
-        let memval = onPortRead(bc)
+    mutating func INIR(portRead: PortReadCallback,
+                       portWrite: PortWriteCallback) {
+        let memval = portRead(bc)
         memory.writeByte(hl, memval)
         hl &+= 1
         b &-= 1
@@ -1374,9 +1382,10 @@ public struct Z80 {
     }
 
     /// Output, Increment and Repeat
-    mutating func OTIR() {
+    mutating func OTIR(portRead: PortReadCallback,
+                       portWrite: PortWriteCallback) {
         let memval = memory.readByte(hl)
-        onPortWrite(bc, memval)
+        portWrite(bc, memval)
 
         hl &+= 1
         b &-= 1
@@ -1400,8 +1409,9 @@ public struct Z80 {
     }
 
     /// Input, Decrement and Repeat
-    mutating func INDR() {
-        let memval = onPortRead(bc)
+    mutating func INDR(portRead: PortReadCallback,
+                       portWrite: PortWriteCallback) {
+        let memval = portRead(bc)
         memory.writeByte(hl, memval)
         hl &-= 1
         b &-= 1
@@ -1424,9 +1434,10 @@ public struct Z80 {
     }
 
     /// Output, Decrement and Repeat
-    mutating func OTDR() {
+    mutating func OTDR(portRead: PortReadCallback,
+                       portWrite: PortWriteCallback) {
         let memval = memory.readByte(hl)
-        onPortWrite(bc, memval)
+        portWrite(bc, memval)
 
         hl &-= 1
         b &-= 1
@@ -1450,7 +1461,8 @@ public struct Z80 {
 
     // MARK: Opcode Decoding
 
-    mutating func DecodeCBOpcode() {
+    mutating func DecodeCBOpcode(portRead: PortReadCallback,
+                                 portWrite: PortWriteCallback) {
         let opCode = getNextByte()
         r &+= 1
 
@@ -1490,7 +1502,8 @@ public struct Z80 {
         }
     }
 
-    mutating func DecodeDDOpcode() {
+    mutating func DecodeDDOpcode(portRead: PortReadCallback,
+                                 portWrite: PortWriteCallback) {
         let opCode = getNextByte()
         r &+= 1
 
@@ -1943,7 +1956,7 @@ public struct Z80 {
                 if extendedCodes.contains(opCode) {
                     tStates += 4
                     pc &-= 1 // go back one
-                    _ = executeNextInstruction()
+                    _ = executeNextInstruction(portRead:portRead, portWrite:portWrite)
                 } else {
                     return
 //                  throw Exception("Opcode DD${toHex8(opCode)} not understood. ");
@@ -2055,20 +2068,21 @@ public struct Z80 {
         }
     }
 
-    mutating func DecodeEDOpcode() {
+    mutating func DecodeEDOpcode(portRead: PortReadCallback,
+                                 portWrite: PortWriteCallback) {
         let opCode = getNextByte()
         r &+= 1
 
         switch opCode {
             // IN B, (C)
             case 0x40:
-                b = onPortRead(bc)
+                b = portRead(bc)
                 inSetFlags(b)
                 tStates += 12
 
             // OUT (C), B
             case 0x41:
-                OUT(portNumber: UInt16(c), value: b)
+            OUT(portNumber: UInt16(c), value: b, portRead:portRead, portWrite:portWrite)
                 tStates += 12
 
             // SBC HL, BC
@@ -2101,13 +2115,13 @@ public struct Z80 {
 
             // IN C, (C)
             case 0x48:
-                c = onPortRead(bc)
+                c = portRead(bc)
                 inSetFlags(c)
                 tStates += 12
 
             // OUT C, (C)
             case 0x49:
-                OUT(portNumber: UInt16(c), value: c)
+            OUT(portNumber: UInt16(c), value: c, portRead:portRead, portWrite:portWrite)
                 tStates += 12
 
             // ADC HL, BC
@@ -2132,13 +2146,13 @@ public struct Z80 {
 
             // IN D, (C)
             case 0x50:
-                d = onPortRead(bc)
+                d = portRead(bc)
                 inSetFlags(d)
                 tStates += 12
 
             // OUT (C), D
             case 0x51:
-                OUT(portNumber: UInt16(c), value: d)
+                OUT(portNumber: UInt16(c), value: d, portRead:portRead, portWrite:portWrite)
                 tStates += 12
 
             // SBC HL, DE
@@ -2168,13 +2182,13 @@ public struct Z80 {
 
             // IN E, (C)
             case 0x58:
-                e = onPortRead(bc)
+                e = portRead(bc)
                 inSetFlags(e)
                 tStates += 12
 
             // OUT (C), E
             case 0x59:
-                OUT(portNumber: UInt16(c), value: e)
+                OUT(portNumber: UInt16(c), value: e, portRead:portRead, portWrite:portWrite)
                 tStates += 12
 
             // ADC HL, DE
@@ -2203,13 +2217,13 @@ public struct Z80 {
 
             // IN H, (C)
             case 0x60:
-                h = onPortRead(bc)
+                h = portRead(bc)
                 inSetFlags(h)
                 tStates += 12
 
             // OUT (C), H
             case 0x61:
-                OUT(portNumber: UInt16(c), value: h)
+                OUT(portNumber: UInt16(c), value: h, portRead:portRead, portWrite:portWrite)
                 tStates += 12
 
             // SBC HL, HL
@@ -2227,13 +2241,13 @@ public struct Z80 {
 
             // IN L, (C)
             case 0x68:
-                l = onPortRead(bc)
+                l = portRead(bc)
                 inSetFlags(l)
                 tStates += 12
 
             // OUT (C), L
             case 0x69:
-                OUT(portNumber: UInt16(c), value: l)
+                OUT(portNumber: UInt16(c), value: l, portRead:portRead, portWrite:portWrite)
                 tStates += 12
 
             // ADC HL, HL
@@ -2253,12 +2267,12 @@ public struct Z80 {
             // IN (C)
             case 0x70:
                 // TODO: Check this shouldn't go to c
-                _ = onPortRead(bc)
+                _ = portRead(bc)
                 tStates += 12
 
             // OUT (C), 0
             case 0x71:
-                OUT(portNumber: UInt16(c), value: 0)
+                OUT(portNumber: UInt16(c), value: 0, portRead:portRead, portWrite:portWrite)
                 tStates += 12
 
             // SBC HL, SP
@@ -2272,13 +2286,13 @@ public struct Z80 {
 
             // IN A, (C)
             case 0x78:
-                a = onPortRead(bc)
+                a = portRead(bc)
                 inSetFlags(a)
                 tStates += 12
 
             // OUT (C), A
             case 0x79:
-                OUT(portNumber: UInt16(c), value: a)
+                OUT(portNumber: UInt16(c), value: a, portRead:portRead, portWrite:portWrite)
                 tStates += 12
 
             // ADC HL, SP
@@ -2301,11 +2315,11 @@ public struct Z80 {
 
             // INI
             case 0xA2:
-                INI()
+            INI(portRead:portRead,portWrite:portWrite)
 
             // OUTI
             case 0xA3:
-                OUTI()
+                OUTI(portRead:portRead, portWrite:portWrite)
 
             // LDD
             case 0xA8:
@@ -2317,11 +2331,11 @@ public struct Z80 {
 
             // IND
             case 0xAA:
-                IND()
+                IND(portRead:portRead, portWrite:portWrite)
 
             // OUTD
             case 0xAB:
-                OUTD()
+                OUTD(portRead:portRead, portWrite:portWrite)
 
             // LDIR
             case 0xB0:
@@ -2333,11 +2347,11 @@ public struct Z80 {
 
             // INIR
             case 0xB2:
-                INIR()
+                INIR(portRead:portRead, portWrite:portWrite)
 
             // OTIR
             case 0xB3:
-                OTIR()
+                OTIR(portRead:portRead, portWrite:portWrite)
 
             // LDDR
             case 0xB8:
@@ -2349,11 +2363,11 @@ public struct Z80 {
 
             // INDR
             case 0xBA:
-                INDR()
+                INDR(portRead:portRead, portWrite:portWrite)
 
             // OTDR
             case 0xBB:
-                OTDR()
+            OTDR(portRead:portRead, portWrite:portWrite)
 
             default:
                 break
@@ -2361,7 +2375,8 @@ public struct Z80 {
     }
 
     // TODO: Coalesce with IX equivalent function (DecodeDDOpcode) using inout param
-    mutating func DecodeFDOpcode() {
+    mutating func DecodeFDOpcode(portRead: PortReadCallback,
+                                 portWrite: PortWriteCallback) {
         let opCode = getNextByte()
         r &+= 1
 
@@ -2809,7 +2824,7 @@ public struct Z80 {
                 if extendedCodes.contains(opCode) {
                     tStates += 4 // instructions take an extra 4 bytes over unprefixed
                     pc &-= 1 // go back one
-                    _ = executeNextInstruction()
+                    _ = executeNextInstruction(portRead:portRead, portWrite:portWrite)
                 } else {
                     return
 //            throw Exception("Opcode FD${toHex8(opCode)} not understood. ");
@@ -2921,7 +2936,8 @@ public struct Z80 {
         }
     }
 
-    public mutating func executeNextInstruction() -> Bool {
+    public mutating func executeNextInstruction(portRead: PortReadCallback,
+                                                portWrite: PortWriteCallback) -> Bool {
         halt = false
         let opCode = getNextByte()
 
@@ -3889,7 +3905,7 @@ public struct Z80 {
 
             // BITWISE INSTRUCTIONS
             case 0xCB:
-                DecodeCBOpcode()
+            DecodeCBOpcode(portRead:portRead, portWrite:portWrite)
 
             // CALL Z, **
             case 0xCC:
@@ -3938,7 +3954,7 @@ public struct Z80 {
 
             // OUT (*), A
             case 0xD3:
-                OUTA(portNumber: UInt16(getNextByte()), value: a)
+                OUTA(portNumber: UInt16(getNextByte()), value: a, portRead:portRead, portWrite:portWrite)
                 tStates += 11
 
             // CALL NC, **
@@ -3994,7 +4010,7 @@ public struct Z80 {
 
             // IN A, (*)
             case 0xDB:
-                a = INA(getNextByte())
+            a = INA(getNextByte(), portRead:portRead, portWrite:portWrite)
                 tStates += 11
 
             // CALL C, **
@@ -4008,7 +4024,7 @@ public struct Z80 {
 
             // IX OPERATIONS
             case 0xDD:
-                DecodeDDOpcode()
+            DecodeDDOpcode(portRead:portRead, portWrite:portWrite)
 
             // SBC A, *
             case 0xDE:
@@ -4114,7 +4130,7 @@ public struct Z80 {
 
             // EXTD INSTRUCTIONS
             case 0xED:
-                DecodeEDOpcode()
+            DecodeEDOpcode(portRead: portRead, portWrite: portWrite)
 
             // XOR *
             case 0xEE:
@@ -4217,7 +4233,7 @@ public struct Z80 {
 
             // IY INSTRUCTIONS
             case 0xFD:
-                DecodeFDOpcode()
+            DecodeFDOpcode(portRead:portRead, portWrite:portWrite)
 
             // CP *
             case 0xFE:
