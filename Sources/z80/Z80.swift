@@ -25,8 +25,8 @@ public enum InterruptMode {
 public struct Z80 {
     public var memory: Memory<UInt16>
 
-    public typealias PortReadCallback = (UInt16) -> UInt8
-    public typealias PortWriteCallback = (UInt16, UInt8) -> ()
+    public typealias PortReadCallback = (Z80, UInt16) -> UInt8
+    public typealias PortWriteCallback = (Z80, UInt16, UInt8) -> ()
 
     /// Callback for a port read (IN instruction).
     ///
@@ -94,8 +94,8 @@ public struct Z80 {
 
     public init(memory: Memory<UInt16>) {
         self.init(memory: memory,
-                  portRead: { port in port.highByte },
-                  portWrite: { _, _ in })
+                  portRead: { _, port in port.highByte },
+                  portWrite: { _, _, _ in })
     }
 
     public init() {
@@ -1257,11 +1257,11 @@ public struct Z80 {
     }
 
     func OUT(portNumber: UInt16, value: UInt8) {
-        onPortWrite(portNumber, value)
+        onPortWrite(self, portNumber, value)
     }
 
     func OUTA(portNumber: UInt16, value: UInt8) {
-        onPortWrite(portNumber, value)
+        onPortWrite(self, portNumber, value)
     }
 
     func INA(_ operandByte: UInt8) -> UInt8 {
@@ -1270,13 +1270,13 @@ public struct Z80 {
         // of the Accumulator also appear on the top half (A8 through A15) of the
         // address bus at this time.
         let addressBus = UInt16.formWord(a, operandByte)
-        let result = onPortRead(addressBus)
+        let result = onPortRead(self, addressBus)
         return result
     }
 
     /// Input and Increment
     mutating func INI() {
-        let memval = onPortRead(bc)
+        let memval = onPortRead(self, bc)
         memory.writeByte(hl, memval)
         hl &+= 1
         b &-= 1
@@ -1296,7 +1296,7 @@ public struct Z80 {
     /// Output and Increment
     mutating func OUTI() {
         let memval = memory.readByte(hl)
-        onPortWrite(bc, memval)
+        onPortWrite(self, bc, memval)
         hl &+= 1
         b &-= 1
 
@@ -1314,7 +1314,7 @@ public struct Z80 {
 
     /// Input and Decrement
     mutating func IND() {
-        let memval = onPortRead(bc)
+        let memval = onPortRead(self, bc)
         memory.writeByte(hl, memval)
         hl &-= 1
         b &-= 1
@@ -1333,7 +1333,7 @@ public struct Z80 {
     /// Output and Decrement
     mutating func OUTD() {
         let memval = memory.readByte(hl)
-        onPortWrite(bc, memval)
+        onPortWrite(self, bc, memval)
         hl &-= 1
         b &-= 1
 
@@ -1351,7 +1351,7 @@ public struct Z80 {
 
     /// Input, Increment and Repeat
     mutating func INIR() {
-        let memval = onPortRead(bc)
+        let memval = onPortRead(self, bc)
         memory.writeByte(hl, memval)
         hl &+= 1
         b &-= 1
@@ -1376,7 +1376,7 @@ public struct Z80 {
     /// Output, Increment and Repeat
     mutating func OTIR() {
         let memval = memory.readByte(hl)
-        onPortWrite(bc, memval)
+        onPortWrite(self, bc, memval)
 
         hl &+= 1
         b &-= 1
@@ -1401,7 +1401,7 @@ public struct Z80 {
 
     /// Input, Decrement and Repeat
     mutating func INDR() {
-        let memval = onPortRead(bc)
+        let memval = onPortRead(self, bc)
         memory.writeByte(hl, memval)
         hl &-= 1
         b &-= 1
@@ -1426,7 +1426,7 @@ public struct Z80 {
     /// Output, Decrement and Repeat
     mutating func OTDR() {
         let memval = memory.readByte(hl)
-        onPortWrite(bc, memval)
+        onPortWrite(self, bc, memval)
 
         hl &-= 1
         b &-= 1
@@ -2062,7 +2062,7 @@ public struct Z80 {
         switch opCode {
             // IN B, (C)
             case 0x40:
-                b = onPortRead(bc)
+                b = onPortRead(self, bc)
                 inSetFlags(b)
                 tStates += 12
 
@@ -2101,7 +2101,7 @@ public struct Z80 {
 
             // IN C, (C)
             case 0x48:
-                c = onPortRead(bc)
+                c = onPortRead(self, bc)
                 inSetFlags(c)
                 tStates += 12
 
@@ -2132,7 +2132,7 @@ public struct Z80 {
 
             // IN D, (C)
             case 0x50:
-                d = onPortRead(bc)
+                d = onPortRead(self, bc)
                 inSetFlags(d)
                 tStates += 12
 
@@ -2168,7 +2168,7 @@ public struct Z80 {
 
             // IN E, (C)
             case 0x58:
-                e = onPortRead(bc)
+                e = onPortRead(self, bc)
                 inSetFlags(e)
                 tStates += 12
 
@@ -2203,7 +2203,7 @@ public struct Z80 {
 
             // IN H, (C)
             case 0x60:
-                h = onPortRead(bc)
+                h = onPortRead(self, bc)
                 inSetFlags(h)
                 tStates += 12
 
@@ -2227,7 +2227,7 @@ public struct Z80 {
 
             // IN L, (C)
             case 0x68:
-                l = onPortRead(bc)
+                l = onPortRead(self, bc)
                 inSetFlags(l)
                 tStates += 12
 
@@ -2253,7 +2253,7 @@ public struct Z80 {
             // IN (C)
             case 0x70:
                 // TODO: Check this shouldn't go to c
-                _ = onPortRead(bc)
+                _ = onPortRead(self, bc)
                 tStates += 12
 
             // OUT (C), 0
@@ -2272,7 +2272,7 @@ public struct Z80 {
 
             // IN A, (C)
             case 0x78:
-                a = onPortRead(bc)
+                a = onPortRead(self, bc)
                 inSetFlags(a)
                 tStates += 12
 
